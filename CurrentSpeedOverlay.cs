@@ -148,6 +148,22 @@ internal sealed class CurrentSpeedOverlay : Form
 
     private void HandleDisplaySettingsChanged(object? sender, EventArgs args)
     {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        if (InvokeRequired && IsHandleCreated)
+        {
+            BeginInvoke(RepositionIfVisible);
+            return;
+        }
+
+        RepositionIfVisible();
+    }
+
+    private void RepositionIfVisible()
+    {
         if (Visible)
         {
             PositionOnPrimaryScreen();
