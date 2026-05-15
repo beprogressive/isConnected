@@ -770,16 +770,30 @@ internal sealed class IssueHighlightOverlay : Form
     private static void DrawCornerGlow(Graphics graphics, Size size, HighlightOptions options)
     {
         var maxDepth = Math.Min(CornerGlowDepth, Math.Min(size.Width, size.Height));
+        var points = GetCornerTrianglePoints(size, options.Area, maxDepth);
+        var apex = GetCornerApex(size, options.Area);
+        var center = GetCornerGlowCenter(apex, options.Area);
         graphics.SmoothingMode = SmoothingMode.AntiAlias;
 
-        // Draw larger, softer triangles first and stack smaller brighter triangles toward the corner apex.
-        for (var depth = maxDepth; depth > 0; depth--)
-        {
-            var alpha = GetCornerGlowAlpha(depth, maxDepth);
-            using var brush = new SolidBrush(Color.FromArgb(alpha, options.Color));
+        using var path = new GraphicsPath();
+        path.AddPolygon(points);
 
-            graphics.FillPolygon(brush, GetCornerTrianglePoints(size, options.Area, depth));
-        }
+        using var brush = new PathGradientBrush(path)
+        {
+            CenterColor = Color.FromArgb(MaxCornerGlowAlpha, options.Color),
+            CenterPoint = center,
+            SurroundColors =
+            [
+                Color.FromArgb(0, options.Color),
+                Color.FromArgb(0, options.Color),
+                Color.FromArgb(0, options.Color),
+            ],
+        };
+
+        graphics.FillPath(brush, path);
+
+        using var apexBrush = new SolidBrush(Color.FromArgb(MaxCornerGlowAlpha, options.Color));
+        graphics.FillRectangle(apexBrush, apex.X, apex.Y, 1, 1);
     }
 
     private static bool IsCornerArea(HighlightArea area) =>
@@ -787,18 +801,6 @@ internal sealed class IssueHighlightOverlay : Form
             or HighlightArea.TopRight
             or HighlightArea.BottomLeft
             or HighlightArea.BottomRight;
-
-    private static byte GetCornerGlowAlpha(int depth, int maxDepth)
-    {
-        if (maxDepth <= 1)
-        {
-            return MaxCornerGlowAlpha;
-        }
-
-        var distance = (double)(depth - 1) / (maxDepth - 1);
-        var intensity = 1d - distance;
-        return ScaleAlpha(MaxCornerGlowAlpha * intensity * intensity);
-    }
 
     private static Point[] GetCornerTrianglePoints(Size size, HighlightArea area, int depth) =>
         area switch
@@ -828,6 +830,26 @@ internal sealed class IssueHighlightOverlay : Form
                 new Point(size.Width - 1, size.Height - depth - 1),
             ],
             _ => [],
+        };
+
+    private static Point GetCornerApex(Size size, HighlightArea area) =>
+        area switch
+        {
+            HighlightArea.TopLeft => new Point(0, 0),
+            HighlightArea.TopRight => new Point(size.Width - 1, 0),
+            HighlightArea.BottomLeft => new Point(0, size.Height - 1),
+            HighlightArea.BottomRight => new Point(size.Width - 1, size.Height - 1),
+            _ => Point.Empty,
+        };
+
+    private static PointF GetCornerGlowCenter(Point apex, HighlightArea area) =>
+        area switch
+        {
+            HighlightArea.TopLeft => new PointF(apex.X + 1, apex.Y + 1),
+            HighlightArea.TopRight => new PointF(apex.X - 1, apex.Y + 1),
+            HighlightArea.BottomLeft => new PointF(apex.X + 1, apex.Y - 1),
+            HighlightArea.BottomRight => new PointF(apex.X - 1, apex.Y - 1),
+            _ => apex,
         };
 
     private static void FillHighlightArea(
