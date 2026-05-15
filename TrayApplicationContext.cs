@@ -548,7 +548,7 @@ internal sealed class IssueHighlightOverlay : Form
     private const int EdgeWidth = 1;
     private const int GlowSize = 4;
     private const int CornerGlowRadius = 420;
-    private const int CornerGlowCenterOffset = 140;
+    private const int CornerGlowVisibleDepth = 20;
     private const byte MaxGlowAlpha = 255;
     private const byte MaxCornerGlowAlpha = 210;
     private const double PulsePeriodMs = 2_800d;
@@ -771,6 +771,7 @@ internal sealed class IssueHighlightOverlay : Form
     private static void DrawCornerGlow(Graphics graphics, Size size, HighlightOptions options)
     {
         var radius = Math.Min(CornerGlowRadius, Math.Max(size.Width, size.Height));
+        var centerOffset = GetCornerGlowCenterOffset(radius);
         var center = GetCornerGlowCenter(size, options.Area);
         var bounds = new Rectangle(center.X - radius, center.Y - radius, radius * 2, radius * 2);
 
@@ -783,9 +784,36 @@ internal sealed class IssueHighlightOverlay : Form
             CenterColor = Color.FromArgb(MaxCornerGlowAlpha, options.Color),
             SurroundColors = [Color.FromArgb(0, options.Color)],
         };
+        brush.Blend = new Blend
+        {
+            Factors = [0f, 0.92f, 1f, 0f],
+            Positions = [0f, 0.93f, 0.985f, 1f],
+        };
 
         graphics.SmoothingMode = SmoothingMode.AntiAlias;
         graphics.FillPath(brush, path);
+
+        Point GetCornerGlowCenter(Size glowSize, HighlightArea area) =>
+            area switch
+            {
+                // The center sits outside the visible screen so only a small arc reaches the selected corner.
+                HighlightArea.TopLeft => new Point(-centerOffset, -centerOffset),
+                HighlightArea.TopRight => new Point(glowSize.Width + centerOffset, -centerOffset),
+                HighlightArea.BottomLeft => new Point(-centerOffset, glowSize.Height + centerOffset),
+                HighlightArea.BottomRight => new Point(
+                    glowSize.Width + centerOffset,
+                    glowSize.Height + centerOffset),
+                _ => Point.Empty,
+            };
+    }
+
+    private static int GetCornerGlowCenterOffset(int radius)
+    {
+        var visibleDepth = Math.Min(CornerGlowVisibleDepth, radius / 2);
+
+        // Places the circle so its intersection with each adjacent screen edge is about visibleDepth pixels
+        // from the corner: sqrt(radius^2 - offset^2) - offset = visibleDepth.
+        return (int)Math.Round((Math.Sqrt((2d * radius * radius) - (visibleDepth * visibleDepth)) - visibleDepth) / 2d);
     }
 
     private static bool IsCornerArea(HighlightArea area) =>
@@ -793,19 +821,6 @@ internal sealed class IssueHighlightOverlay : Form
             or HighlightArea.TopRight
             or HighlightArea.BottomLeft
             or HighlightArea.BottomRight;
-
-    private static Point GetCornerGlowCenter(Size size, HighlightArea area) =>
-        area switch
-        {
-            // The center sits outside the visible screen so the shown arc feels like a large off-screen glow.
-            HighlightArea.TopLeft => new Point(-CornerGlowCenterOffset, -CornerGlowCenterOffset),
-            HighlightArea.TopRight => new Point(size.Width + CornerGlowCenterOffset, -CornerGlowCenterOffset),
-            HighlightArea.BottomLeft => new Point(-CornerGlowCenterOffset, size.Height + CornerGlowCenterOffset),
-            HighlightArea.BottomRight => new Point(
-                size.Width + CornerGlowCenterOffset,
-                size.Height + CornerGlowCenterOffset),
-            _ => Point.Empty,
-        };
 
     private static void FillHighlightArea(
         Graphics graphics,
