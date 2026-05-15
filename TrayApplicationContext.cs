@@ -548,6 +548,7 @@ internal sealed class IssueHighlightOverlay : Form
     private const int EdgeWidth = 1;
     private const int GlowSize = 4;
     private const int CornerGlowDepth = 156;
+    private const int CornerGlowSupersampleSteps = 3;
     private const byte MaxGlowAlpha = 255;
     private const byte MaxCornerGlowAlpha = 255;
     private const double PulsePeriodMs = 2_800d;
@@ -770,35 +771,24 @@ internal sealed class IssueHighlightOverlay : Form
     private static void DrawCornerGlow(Graphics graphics, Size size, HighlightOptions options)
     {
         var maxDepth = Math.Min(CornerGlowDepth, Math.Min(size.Width, size.Height));
-        var points = GetCornerTrianglePoints(size, options.Area, maxDepth);
-        var apex = GetCornerApex(size, options.Area);
-        var center = GetCornerGlowCenter(apex, options.Area);
-        graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        using var bitmap = new Bitmap(maxDepth, maxDepth, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
 
-        using var path = new GraphicsPath();
-        path.AddPolygon(points);
-
-        using var brush = new PathGradientBrush(path)
+        for (var y = 0; y < maxDepth; y++)
         {
-            CenterColor = Color.FromArgb(MaxCornerGlowAlpha, options.Color),
-            CenterPoint = center,
-            SurroundColors =
-            [
-                Color.FromArgb(0, options.Color),
-                Color.FromArgb(0, options.Color),
-                Color.FromArgb(0, options.Color),
-            ],
-        };
-        brush.Blend = new Blend
-        {
-            Factors = [0f, 0.025f, 0.18f, 1f],
-            Positions = [0f, 0.45f, 0.78f, 1f],
-        };
+            for (var x = 0; x < maxDepth; x++)
+            {
+                var alpha = GetCornerPixelAlpha(options.Area, maxDepth, x, y);
+                if (alpha > 0)
+                {
+                    bitmap.SetPixel(x, y, Color.FromArgb(alpha, options.Color));
+                }
+            }
+        }
 
-        graphics.FillPath(brush, path);
+        var apex = GetCornerBitmapApex(options.Area, maxDepth);
+        bitmap.SetPixel(apex.X, apex.Y, Color.FromArgb(MaxCornerGlowAlpha, options.Color));
 
-        using var apexBrush = new SolidBrush(Color.FromArgb(MaxCornerGlowAlpha, options.Color));
-        graphics.FillRectangle(apexBrush, apex.X, apex.Y, 1, 1);
+        graphics.DrawImageUnscaled(bitmap, GetCornerBitmapLocation(size, options.Area, maxDepth));
     }
 
     private static bool IsCornerArea(HighlightArea area) =>
@@ -807,54 +797,63 @@ internal sealed class IssueHighlightOverlay : Form
             or HighlightArea.BottomLeft
             or HighlightArea.BottomRight;
 
-    private static Point[] GetCornerTrianglePoints(Size size, HighlightArea area, int depth) =>
+    private static byte GetCornerPixelAlpha(HighlightArea area, int depth, int x, int y)
+    {
+        var alphaTotal = 0d;
+        var sampleCount = CornerGlowSupersampleSteps * CornerGlowSupersampleSteps;
+
+        for (var sampleY = 0; sampleY < CornerGlowSupersampleSteps; sampleY++)
+        {
+            for (var sampleX = 0; sampleX < CornerGlowSupersampleSteps; sampleX++)
+            {
+                var px = x + (sampleX + 0.5d) / CornerGlowSupersampleSteps;
+                var py = y + (sampleY + 0.5d) / CornerGlowSupersampleSteps;
+                var (distanceX, distanceY) = GetCornerSampleDistances(area, depth, px, py);
+                var progress = (distanceX + distanceY) / depth;
+
+                if (progress < 1d)
+                {
+                    var intensity = Math.Pow(1d - progress, 3.6d);
+                    alphaTotal += MaxCornerGlowAlpha * intensity;
+                }
+            }
+        }
+
+        return ScaleAlpha(alphaTotal / sampleCount);
+    }
+
+    private static (double DistanceX, double DistanceY) GetCornerSampleDistances(
+        HighlightArea area,
+        int depth,
+        double x,
+        double y) =>
         area switch
         {
-            HighlightArea.TopLeft =>
-            [
-                new Point(0, 0),
-                new Point(depth, 0),
-                new Point(0, depth),
-            ],
-            HighlightArea.TopRight =>
-            [
-                new Point(size.Width - 1, 0),
-                new Point(size.Width - depth - 1, 0),
-                new Point(size.Width - 1, depth),
-            ],
-            HighlightArea.BottomLeft =>
-            [
-                new Point(0, size.Height - 1),
-                new Point(depth, size.Height - 1),
-                new Point(0, size.Height - depth - 1),
-            ],
-            HighlightArea.BottomRight =>
-            [
-                new Point(size.Width - 1, size.Height - 1),
-                new Point(size.Width - depth - 1, size.Height - 1),
-                new Point(size.Width - 1, size.Height - depth - 1),
-            ],
-            _ => [],
+            HighlightArea.TopLeft => (x, y),
+            HighlightArea.TopRight => (depth - x, y),
+            HighlightArea.BottomLeft => (x, depth - y),
+            HighlightArea.BottomRight => (depth - x, depth - y),
+            _ => (depth, depth),
         };
 
-    private static Point GetCornerApex(Size size, HighlightArea area) =>
+    private static Point GetCornerBitmapLocation(Size size, HighlightArea area, int depth) =>
         area switch
         {
             HighlightArea.TopLeft => new Point(0, 0),
-            HighlightArea.TopRight => new Point(size.Width - 1, 0),
-            HighlightArea.BottomLeft => new Point(0, size.Height - 1),
-            HighlightArea.BottomRight => new Point(size.Width - 1, size.Height - 1),
+            HighlightArea.TopRight => new Point(size.Width - depth, 0),
+            HighlightArea.BottomLeft => new Point(0, size.Height - depth),
+            HighlightArea.BottomRight => new Point(size.Width - depth, size.Height - depth),
             _ => Point.Empty,
         };
 
-    private static PointF GetCornerGlowCenter(Point apex, HighlightArea area) =>
+    private static Point GetCornerBitmapApex(HighlightArea area, int depth) =>
         area switch
         {
-            HighlightArea.TopLeft => new PointF(apex.X + 1, apex.Y + 1),
-            HighlightArea.TopRight => new PointF(apex.X - 1, apex.Y + 1),
-            HighlightArea.BottomLeft => new PointF(apex.X + 1, apex.Y - 1),
-            HighlightArea.BottomRight => new PointF(apex.X - 1, apex.Y - 1),
-            _ => apex,
+            HighlightArea.TopLeft => new Point(0, 0),
+            HighlightArea.TopRight => new Point(depth - 1, 0),
+            HighlightArea.BottomLeft => new Point(0, depth - 1),
+            HighlightArea.BottomRight => new Point(depth - 1, depth - 1),
+            _ => Point.Empty,
         };
 
     private static void FillHighlightArea(
