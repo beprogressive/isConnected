@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.ComponentModel;
 using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
 
@@ -137,8 +138,19 @@ internal sealed class IssueHighlightOverlay : Form
             return;
         }
 
-        EnsureGlowResources(new Size(Width, Height));
-        ApplyLayeredBitmap(GetPulseIntensity());
+        try
+        {
+            EnsureGlowResources(new Size(Width, Height));
+            ApplyLayeredBitmap(GetPulseIntensity());
+        }
+        catch (Win32Exception)
+        {
+            // A rendering failure should disable the warning surface, not take down the tray app.
+            pulseTimer.Stop();
+            pulseStopwatch.Reset();
+            Hide();
+            DisposeGlowResources();
+        }
     }
 
     private void EnsureGlowResources(Size size)
@@ -159,17 +171,49 @@ internal sealed class IssueHighlightOverlay : Form
             DrawGlow(graphics, bitmap.Size, options);
         }
 
-        var screenDc = GetDC(IntPtr.Zero);
+        var memoryDc = IntPtr.Zero;
+        var bitmapHandle = IntPtr.Zero;
+        var previousObject = IntPtr.Zero;
+        var screenDc = GetScreenDc();
+
         try
         {
-            glowMemoryDc = CreateCompatibleDC(screenDc);
-            glowBitmapHandle = bitmap.GetHbitmap(Color.FromArgb(0));
-            glowPreviousObject = SelectObject(glowMemoryDc, glowBitmapHandle);
+            memoryDc = CreateCompatibleDC(screenDc);
+            ThrowIfZero(memoryDc, nameof(CreateCompatibleDC));
+
+            bitmapHandle = bitmap.GetHbitmap(Color.FromArgb(0));
+            ThrowIfZero(bitmapHandle, nameof(Bitmap.GetHbitmap));
+
+            previousObject = SelectObject(memoryDc, bitmapHandle);
+            ThrowIfZero(previousObject, nameof(SelectObject));
+
+            glowMemoryDc = memoryDc;
+            glowBitmapHandle = bitmapHandle;
+            glowPreviousObject = previousObject;
             renderedGlowSize = size;
+
+            memoryDc = IntPtr.Zero;
+            bitmapHandle = IntPtr.Zero;
+            previousObject = IntPtr.Zero;
         }
         finally
         {
-            ReleaseDC(IntPtr.Zero, screenDc);
+            if (previousObject != IntPtr.Zero && memoryDc != IntPtr.Zero)
+            {
+                SelectObject(memoryDc, previousObject);
+            }
+
+            if (bitmapHandle != IntPtr.Zero)
+            {
+                DeleteObject(bitmapHandle);
+            }
+
+            if (memoryDc != IntPtr.Zero)
+            {
+                DeleteDC(memoryDc);
+            }
+
+            ReleaseScreenDc(screenDc);
         }
     }
 
@@ -177,17 +221,17 @@ internal sealed class IssueHighlightOverlay : Form
     {
         if (glowMemoryDc != IntPtr.Zero)
         {
-            SelectObject(glowMemoryDc, glowPreviousObject);
+            _ = SelectObject(glowMemoryDc, glowPreviousObject);
         }
 
         if (glowBitmapHandle != IntPtr.Zero)
         {
-            DeleteObject(glowBitmapHandle);
+            _ = DeleteObject(glowBitmapHandle);
         }
 
         if (glowMemoryDc != IntPtr.Zero)
         {
-            DeleteDC(glowMemoryDc);
+            _ = DeleteDC(glowMemoryDc);
         }
 
         glowMemoryDc = IntPtr.Zero;
@@ -362,7 +406,7 @@ internal sealed class IssueHighlightOverlay : Form
 
     private void ApplyLayeredBitmap(double pulseIntensity)
     {
-        var screenDc = GetDC(IntPtr.Zero);
+        var screenDc = GetScreenDc();
 
         try
         {
@@ -376,7 +420,7 @@ internal sealed class IssueHighlightOverlay : Form
                 AlphaFormat = AcSrcAlpha,
             };
 
-            UpdateLayeredWindow(
+            var updated = UpdateLayeredWindow(
                 Handle,
                 screenDc,
                 ref destination,
@@ -386,10 +430,42 @@ internal sealed class IssueHighlightOverlay : Form
                 0,
                 ref blend,
                 UlwAlpha);
+            ThrowIfFalse(updated, nameof(UpdateLayeredWindow));
         }
         finally
         {
-            ReleaseDC(IntPtr.Zero, screenDc);
+            ReleaseScreenDc(screenDc);
+        }
+    }
+
+    private static IntPtr GetScreenDc()
+    {
+        var screenDc = GetDC(IntPtr.Zero);
+        ThrowIfZero(screenDc, nameof(GetDC));
+        return screenDc;
+    }
+
+    private static void ReleaseScreenDc(IntPtr screenDc)
+    {
+        if (screenDc != IntPtr.Zero)
+        {
+            _ = ReleaseDC(IntPtr.Zero, screenDc);
+        }
+    }
+
+    private static void ThrowIfZero(IntPtr handle, string operation)
+    {
+        if (handle == IntPtr.Zero)
+        {
+            throw new Win32Exception(Marshal.GetLastWin32Error(), $"{operation} failed.");
+        }
+    }
+
+    private static void ThrowIfFalse(bool result, string operation)
+    {
+        if (!result)
+        {
+            throw new Win32Exception(Marshal.GetLastWin32Error(), $"{operation} failed.");
         }
     }
 
