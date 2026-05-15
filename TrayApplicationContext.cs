@@ -19,16 +19,19 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly ContextMenuStrip menu;
     private readonly ToolStripMenuItem statusItem;
     private readonly ToolStripMenuItem autostartItem;
+    private readonly ToolStripMenuItem highlightIssueItem;
     private readonly ToolStripMenuItem intervalMenu;
     private readonly System.Windows.Forms.Timer timer;
     private readonly Icon onlineIcon;
     private readonly Icon offlineIcon;
     private readonly AppSettings settings;
+    private readonly IssueHighlightOverlay issueHighlightOverlay;
 
     private bool checkInProgress;
     private bool isOnline;
     private bool isExiting;
     private bool suppressAutostartChange;
+    private bool suppressHighlightIssueChange;
 
     public TrayApplicationContext()
     {
@@ -40,6 +43,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
         autostartItem = new ToolStripMenuItem("Autostart") { CheckOnClick = true };
         autostartItem.Checked = AutostartManager.IsEnabled();
         autostartItem.CheckedChanged += (_, _) => TrySetAutostart(autostartItem.Checked);
+
+        highlightIssueItem = new ToolStripMenuItem("Highlight issue") { CheckOnClick = true };
+        highlightIssueItem.Checked = settings.HighlightIssue;
+        highlightIssueItem.CheckedChanged += (_, _) => TrySetHighlightIssue(highlightIssueItem.Checked);
 
         intervalMenu = new ToolStripMenuItem("Ping interval");
         RebuildIntervalMenu();
@@ -54,6 +61,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         menu.Items.Add(statusItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(autostartItem);
+        menu.Items.Add(highlightIssueItem);
         menu.Items.Add(intervalMenu);
         menu.Items.Add(checkNowItem);
         menu.Items.Add(new ToolStripSeparator());
@@ -74,6 +82,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
             }
         };
 
+        issueHighlightOverlay = new IssueHighlightOverlay();
+
         timer = new System.Windows.Forms.Timer { Interval = 250 };
         timer.Tick += async (_, _) =>
         {
@@ -91,6 +101,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             timer.Stop();
             trayIcon.Visible = false;
             trayIcon.Dispose();
+            issueHighlightOverlay.Dispose();
             menu.Dispose();
             timer.Dispose();
             onlineIcon.Dispose();
@@ -170,6 +181,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         statusItem.Text = $"{statusText} (last check {checkedAt})";
         trayIcon.Text = $"IsConnected: {statusText}";
+        UpdateIssueHighlight();
     }
 
     private void RebuildIntervalMenu()
@@ -236,6 +248,37 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
     }
 
+    private void TrySetHighlightIssue(bool enabled)
+    {
+        if (suppressHighlightIssueChange)
+        {
+            return;
+        }
+
+        var previousValue = settings.HighlightIssue;
+        settings.HighlightIssue = enabled;
+
+        try
+        {
+            settings.Save();
+            UpdateIssueHighlight();
+        }
+        catch (Exception ex)
+        {
+            settings.HighlightIssue = previousValue;
+            suppressHighlightIssueChange = true;
+            highlightIssueItem.Checked = previousValue;
+            suppressHighlightIssueChange = false;
+            UpdateIssueHighlight();
+            ShowError("Could not save issue highlight setting", ex);
+        }
+    }
+
+    private void UpdateIssueHighlight()
+    {
+        issueHighlightOverlay.SetVisible(settings.HighlightIssue && !isOnline && !isExiting);
+    }
+
     private void ShowError(string message, Exception ex)
     {
         if (isExiting)
@@ -253,6 +296,7 @@ internal sealed class AppSettings
     private const int DefaultIntervalSeconds = 30;
 
     public int IntervalSeconds { get; set; } = DefaultIntervalSeconds;
+    public bool HighlightIssue { get; set; }
 
     private static string SettingsPath =>
         Path.Combine(
@@ -298,6 +342,307 @@ internal sealed class AppSettings
     }
 
     private static bool IntervalIsSupported(int seconds) => seconds is 5 or 10 or 30 or 60 or 300;
+}
+
+internal sealed class IssueHighlightOverlay : Form
+{
+    private const int EdgeWidth = 1;
+    private const int GlowSize = 4;
+    private const byte MaxGlowAlpha = 255;
+    private const double PulsePeriodMs = 2_800d;
+    private const double MinPulseIntensity = 0.45d;
+    private const int AcSrcOver = 0x00;
+    private const int AcSrcAlpha = 0x01;
+    private const int UlwAlpha = 0x00000002;
+    private const int WmNchittest = 0x0084;
+    private const int Httransparent = -1;
+    private const int WsExLayered = 0x00080000;
+    private const int WsExTransparent = 0x00000020;
+    private const int WsExToolWindow = 0x00000080;
+    private const int WsExNoActivate = 0x08000000;
+
+    private readonly System.Windows.Forms.Timer pulseTimer;
+    private readonly Stopwatch pulseStopwatch = new();
+    private IntPtr glowMemoryDc;
+    private IntPtr glowBitmapHandle;
+    private IntPtr glowPreviousObject;
+    private Size renderedGlowSize = Size.Empty;
+
+    public IssueHighlightOverlay()
+    {
+        AutoScaleMode = AutoScaleMode.None;
+        ControlBox = false;
+        FormBorderStyle = FormBorderStyle.None;
+        MaximizeBox = false;
+        MinimizeBox = false;
+        ShowIcon = false;
+        ShowInTaskbar = false;
+        StartPosition = FormStartPosition.Manual;
+        TopMost = true;
+
+        pulseTimer = new System.Windows.Forms.Timer { Interval = 33 };
+        pulseTimer.Tick += (_, _) => RenderGlow();
+    }
+
+    protected override bool ShowWithoutActivation => true;
+
+    protected override CreateParams CreateParams
+    {
+        get
+        {
+            var createParams = base.CreateParams;
+            // Keeps the visual warning out of Alt+Tab, prevents focus stealing, and lets clicks pass through.
+            createParams.ExStyle |= WsExLayered | WsExToolWindow | WsExNoActivate | WsExTransparent;
+            return createParams;
+        }
+    }
+
+    protected override void WndProc(ref Message message)
+    {
+        if (message.Msg == WmNchittest)
+        {
+            message.Result = Httransparent;
+            return;
+        }
+
+        base.WndProc(ref message);
+    }
+
+    public void SetVisible(bool visible)
+    {
+        if (visible)
+        {
+            PositionOnPrimaryScreen();
+            if (!Visible)
+            {
+                Show();
+                pulseStopwatch.Restart();
+                pulseTimer.Start();
+            }
+
+            RenderGlow();
+            return;
+        }
+
+        if (Visible)
+        {
+            pulseTimer.Stop();
+            pulseStopwatch.Reset();
+            Hide();
+            DisposeGlowResources();
+        }
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            pulseTimer.Dispose();
+            DisposeGlowResources();
+        }
+
+        base.Dispose(disposing);
+    }
+
+    private void PositionOnPrimaryScreen()
+    {
+        var bounds = Screen.PrimaryScreen?.Bounds ?? Screen.FromControl(this).Bounds;
+        Bounds = bounds;
+    }
+
+    private void RenderGlow()
+    {
+        if (Width <= 0 || Height <= 0)
+        {
+            return;
+        }
+
+        EnsureGlowResources(new Size(Width, Height));
+        ApplyLayeredBitmap(GetPulseIntensity());
+    }
+
+    private void EnsureGlowResources(Size size)
+    {
+        if (glowMemoryDc != IntPtr.Zero && glowBitmapHandle != IntPtr.Zero && renderedGlowSize == size)
+        {
+            return;
+        }
+
+        DisposeGlowResources();
+
+        // The glow shape is static; pulse frames only adjust SourceConstantAlpha to avoid full-screen bitmap churn.
+        using var bitmap = new Bitmap(size.Width, size.Height, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+        using (var graphics = Graphics.FromImage(bitmap))
+        {
+            graphics.CompositingMode = CompositingMode.SourceOver;
+            graphics.Clear(Color.Transparent);
+            DrawGlow(graphics, bitmap.Size);
+        }
+
+        var screenDc = GetDC(IntPtr.Zero);
+        try
+        {
+            glowMemoryDc = CreateCompatibleDC(screenDc);
+            glowBitmapHandle = bitmap.GetHbitmap(Color.FromArgb(0));
+            glowPreviousObject = SelectObject(glowMemoryDc, glowBitmapHandle);
+            renderedGlowSize = size;
+        }
+        finally
+        {
+            ReleaseDC(IntPtr.Zero, screenDc);
+        }
+    }
+
+    private void DisposeGlowResources()
+    {
+        if (glowMemoryDc != IntPtr.Zero)
+        {
+            SelectObject(glowMemoryDc, glowPreviousObject);
+        }
+
+        if (glowBitmapHandle != IntPtr.Zero)
+        {
+            DeleteObject(glowBitmapHandle);
+        }
+
+        if (glowMemoryDc != IntPtr.Zero)
+        {
+            DeleteDC(glowMemoryDc);
+        }
+
+        glowMemoryDc = IntPtr.Zero;
+        glowBitmapHandle = IntPtr.Zero;
+        glowPreviousObject = IntPtr.Zero;
+        renderedGlowSize = Size.Empty;
+    }
+
+    private double GetPulseIntensity()
+    {
+        if (!pulseStopwatch.IsRunning)
+        {
+            return 1d;
+        }
+
+        var progress = pulseStopwatch.Elapsed.TotalMilliseconds % PulsePeriodMs / PulsePeriodMs;
+        var wave = (Math.Sin(progress * Math.Tau - Math.PI / 2d) + 1d) / 2d;
+        return MinPulseIntensity + (1d - MinPulseIntensity) * wave;
+    }
+
+    private static void DrawGlow(Graphics graphics, Size size)
+    {
+        var maxDepth = Math.Min(GlowSize, Math.Min(size.Width, size.Height) / 2);
+        for (var offset = 0; offset < maxDepth; offset++)
+        {
+            var alpha = GetGlowAlpha(offset);
+            using var brush = new SolidBrush(Color.FromArgb(alpha, 255, 0, 0));
+
+            graphics.FillRectangle(brush, 0, offset, size.Width, 1);
+            graphics.FillRectangle(brush, 0, size.Height - offset - 1, size.Width, 1);
+            graphics.FillRectangle(brush, offset, 0, 1, size.Height);
+            graphics.FillRectangle(brush, size.Width - offset - 1, 0, 1, size.Height);
+        }
+
+        using var edgeBrush = new SolidBrush(Color.FromArgb(MaxGlowAlpha, 255, 0, 0));
+        graphics.FillRectangle(edgeBrush, 0, 0, size.Width, EdgeWidth);
+        graphics.FillRectangle(edgeBrush, 0, size.Height - EdgeWidth, size.Width, EdgeWidth);
+        graphics.FillRectangle(edgeBrush, 0, 0, EdgeWidth, size.Height);
+        graphics.FillRectangle(edgeBrush, size.Width - EdgeWidth, 0, EdgeWidth, size.Height);
+    }
+
+    private static byte GetGlowAlpha(int offset)
+    {
+        var distance = Math.Max(0d, 1d - (double)offset / GlowSize);
+        return ScaleAlpha(MaxGlowAlpha * distance * distance);
+    }
+
+    private static byte ScaleAlpha(double alpha) =>
+        (byte)Math.Round(Math.Clamp(alpha, 0d, byte.MaxValue));
+
+    private void ApplyLayeredBitmap(double pulseIntensity)
+    {
+        var screenDc = GetDC(IntPtr.Zero);
+
+        try
+        {
+            var size = new NativeSize(renderedGlowSize.Width, renderedGlowSize.Height);
+            var source = new NativePoint(0, 0);
+            var destination = new NativePoint(Left, Top);
+            var blend = new BlendFunction
+            {
+                BlendOp = AcSrcOver,
+                SourceConstantAlpha = ScaleAlpha(byte.MaxValue * pulseIntensity),
+                AlphaFormat = AcSrcAlpha,
+            };
+
+            UpdateLayeredWindow(
+                Handle,
+                screenDc,
+                ref destination,
+                ref size,
+                glowMemoryDc,
+                ref source,
+                0,
+                ref blend,
+                UlwAlpha);
+        }
+        finally
+        {
+            ReleaseDC(IntPtr.Zero, screenDc);
+        }
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr GetDC(IntPtr hWnd);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern int ReleaseDC(IntPtr hWnd, IntPtr hDc);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    private static extern IntPtr CreateCompatibleDC(IntPtr hDc);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    private static extern bool DeleteDC(IntPtr hDc);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    private static extern IntPtr SelectObject(IntPtr hDc, IntPtr hObject);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    private static extern bool DeleteObject(IntPtr hObject);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool UpdateLayeredWindow(
+        IntPtr hWnd,
+        IntPtr hdcDst,
+        ref NativePoint pptDst,
+        ref NativeSize pSize,
+        IntPtr hdcSrc,
+        ref NativePoint pptSrc,
+        int crKey,
+        ref BlendFunction pBlend,
+        int dwFlags);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private readonly struct NativePoint(int x, int y)
+    {
+        public readonly int X = x;
+        public readonly int Y = y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private readonly struct NativeSize(int width, int height)
+    {
+        public readonly int Width = width;
+        public readonly int Height = height;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct BlendFunction
+    {
+        public byte BlendOp;
+        public byte BlendFlags;
+        public byte SourceConstantAlpha;
+        public byte AlphaFormat;
+    }
 }
 
 internal static class AutostartManager
