@@ -69,6 +69,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
         var exitItem = new ToolStripMenuItem("Exit");
         exitItem.Click += (_, _) => ExitThread();
 
+        var aboutItem = new ToolStripMenuItem("About");
+        aboutItem.Click += (_, _) => ShowAboutDialog();
+
         menu = new ContextMenuStrip();
         menu.Items.Add(statusItem);
         menu.Items.Add(new ToolStripSeparator());
@@ -80,6 +83,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         menu.Items.Add(testIssueItem);
         menu.Items.Add(checkNowItem);
         menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(aboutItem);
         menu.Items.Add(exitItem);
 
         trayIcon = new NotifyIcon
@@ -399,5 +403,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         statusItem.Text = $"{message}: {ex.Message}";
         trayIcon.ShowBalloonTip(4_000, "IsConnected", message, ToolTipIcon.Warning);
+    }
+
+    private static void ShowAboutDialog()
+    {
+        using var dialog = new AboutDialog();
+        dialog.ShowDialog();
     }
 }
