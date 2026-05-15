@@ -547,7 +547,7 @@ internal sealed class IssueHighlightOverlay : Form
 {
     private const int EdgeWidth = 1;
     private const int GlowSize = 4;
-    private const int CornerGlowDepth = 24;
+    private const int CornerGlowDepth = 36;
     private const byte MaxGlowAlpha = 255;
     private const byte MaxCornerGlowAlpha = 255;
     private const double PulsePeriodMs = 2_800d;
