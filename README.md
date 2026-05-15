@@ -11,6 +11,8 @@ The app is intentionally lightweight: it reports whether either target responds 
 - Left-click or right-click the tray icon to open the menu.
 - `Autostart` toggles startup with Windows for the current user.
 - `Highlight issue` shows a pulsing visual warning when connectivity is offline.
+- `Show current speed` displays a lightweight top-right overlay with current download/upload traffic for the active Windows network interface. It reads Windows interface byte counters and does not generate network traffic.
+- `Speed overlay corner` selects which primary screen corner shows the current speed overlay.
 - `Highlight area` selects whether the warning appears around every connected screen, on one edge, or from one corner.
 - `Highlight color` stores the selected warning color in `%APPDATA%\IsConnected\settings.json`.
 - `Ping interval` stores the selected frequency in `%APPDATA%\IsConnected\settings.json`.
@@ -27,6 +29,8 @@ Current settings:
 
 - `IntervalSeconds`: ping frequency. Supported values are `5`, `10`, `30`, `60`, and `300`.
 - `HighlightIssue`: enables or disables the offline visual warning.
+- `ShowCurrentSpeed`: enables or disables the current network speed overlay.
+- `SpeedOverlayCorner`: current speed overlay placement. Supported values are `TopLeft`, `TopRight`, `BottomLeft`, and `BottomRight`.
 - `HighlightArea`: visual warning placement. Supported values are `FullScreen`, `Left`, `Right`, `Top`, `Bottom`, `TopLeft`, `TopRight`, `BottomLeft`, and `BottomRight`.
 - `HighlightColorArgb`: warning color stored as an ARGB integer.
 
