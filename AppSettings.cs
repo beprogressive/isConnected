@@ -10,6 +10,7 @@ internal sealed class AppSettings
 
     public int IntervalSeconds { get; set; } = DefaultIntervalSeconds;
     public bool HighlightIssue { get; set; }
+    public bool ShowCurrentSpeed { get; set; }
     public HighlightArea HighlightArea { get; set; } = HighlightArea.FullScreen;
     public int HighlightColorArgb { get; set; } = DefaultHighlightColor.ToArgb();
 

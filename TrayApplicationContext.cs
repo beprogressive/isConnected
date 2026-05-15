@@ -9,6 +9,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly ToolStripMenuItem statusItem;
     private readonly ToolStripMenuItem autostartItem;
     private readonly ToolStripMenuItem highlightIssueItem;
+    private readonly ToolStripMenuItem showCurrentSpeedItem;
     private readonly ToolStripMenuItem highlightAreaMenu;
     private readonly ToolStripMenuItem highlightColorItem;
     private readonly ToolStripMenuItem intervalMenu;
@@ -19,12 +20,15 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly Icon offlineIcon;
     private readonly AppSettings settings;
     private readonly IssueHighlightOverlay issueHighlightOverlay;
+    private readonly CurrentSpeedOverlay currentSpeedOverlay;
+    private readonly NetworkSpeedMonitor networkSpeedMonitor;
 
     private bool checkInProgress;
     private bool isOnline;
     private bool isExiting;
     private bool suppressAutostartChange;
     private bool suppressHighlightIssueChange;
+    private bool suppressShowCurrentSpeedChange;
     private bool issueTestActive;
 
     public TrayApplicationContext()
@@ -49,6 +53,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
         highlightIssueItem = new ToolStripMenuItem("Highlight issue") { CheckOnClick = true };
         highlightIssueItem.Checked = settings.HighlightIssue;
         highlightIssueItem.CheckedChanged += (_, _) => TrySetHighlightIssue(highlightIssueItem.Checked);
+
+        showCurrentSpeedItem = new ToolStripMenuItem("Show current speed") { CheckOnClick = true };
+        showCurrentSpeedItem.Checked = settings.ShowCurrentSpeed;
+        showCurrentSpeedItem.CheckedChanged += (_, _) => TrySetShowCurrentSpeed(showCurrentSpeedItem.Checked);
 
         highlightAreaMenu = new ToolStripMenuItem("Highlight area");
         RebuildHighlightAreaMenu();
@@ -77,6 +85,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(autostartItem);
         menu.Items.Add(highlightIssueItem);
+        menu.Items.Add(showCurrentSpeedItem);
         menu.Items.Add(highlightAreaMenu);
         menu.Items.Add(highlightColorItem);
         menu.Items.Add(intervalMenu);
@@ -102,7 +111,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
         };
 
         issueHighlightOverlay = new IssueHighlightOverlay();
+        currentSpeedOverlay = new CurrentSpeedOverlay();
+        networkSpeedMonitor = new NetworkSpeedMonitor();
+        networkSpeedMonitor.SpeedChanged += (_, speed) => UpdateCurrentSpeed(speed);
         ApplyHighlightOptions();
+        ApplyCurrentSpeedVisibility();
 
         timer = new System.Windows.Forms.Timer { Interval = 250 };
         timer.Tick += async (_, _) =>
@@ -125,6 +138,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
             timer.Stop();
             trayIcon.Visible = false;
             trayIcon.Dispose();
+            networkSpeedMonitor.Dispose();
+            currentSpeedOverlay.Dispose();
             issueHighlightOverlay.Dispose();
             menu.Dispose();
             issueTestTimer.Dispose();
@@ -289,6 +304,32 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
     }
 
+    private void TrySetShowCurrentSpeed(bool enabled)
+    {
+        if (suppressShowCurrentSpeedChange)
+        {
+            return;
+        }
+
+        var previousValue = settings.ShowCurrentSpeed;
+        settings.ShowCurrentSpeed = enabled;
+
+        try
+        {
+            settingsStore.Save(settings);
+            ApplyCurrentSpeedVisibility();
+        }
+        catch (Exception ex)
+        {
+            settings.ShowCurrentSpeed = previousValue;
+            suppressShowCurrentSpeedChange = true;
+            showCurrentSpeedItem.Checked = previousValue;
+            suppressShowCurrentSpeedChange = false;
+            ApplyCurrentSpeedVisibility();
+            ShowError("Could not save current speed setting", ex);
+        }
+    }
+
     private void TrySetHighlightArea(HighlightArea area)
     {
         var previousValue = settings.HighlightArea;
@@ -370,6 +411,35 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private void ApplyHighlightOptions()
     {
         issueHighlightOverlay.SetOptions(new HighlightOptions(settings.HighlightArea, settings.HighlightColor));
+    }
+
+    private void ApplyCurrentSpeedVisibility()
+    {
+        currentSpeedOverlay.SetVisible(settings.ShowCurrentSpeed && !isExiting);
+
+        if (settings.ShowCurrentSpeed && !isExiting)
+        {
+            networkSpeedMonitor.Start();
+            return;
+        }
+
+        networkSpeedMonitor.Stop();
+    }
+
+    private void UpdateCurrentSpeed(NetworkSpeedSnapshot speed)
+    {
+        if (isExiting || currentSpeedOverlay.IsDisposed)
+        {
+            return;
+        }
+
+        if (currentSpeedOverlay.InvokeRequired && currentSpeedOverlay.IsHandleCreated)
+        {
+            currentSpeedOverlay.BeginInvoke(() => currentSpeedOverlay.UpdateSpeed(speed));
+            return;
+        }
+
+        currentSpeedOverlay.UpdateSpeed(speed);
     }
 
     private void UpdateHighlightColorPreview()
