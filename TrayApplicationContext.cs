@@ -4,6 +4,7 @@ using System.Drawing.Drawing2D;
 using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace IsConnected;
 
@@ -20,6 +21,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly ToolStripMenuItem statusItem;
     private readonly ToolStripMenuItem autostartItem;
     private readonly ToolStripMenuItem highlightIssueItem;
+    private readonly ToolStripMenuItem highlightAreaMenu;
+    private readonly ToolStripMenuItem highlightColorItem;
     private readonly ToolStripMenuItem intervalMenu;
     private readonly System.Windows.Forms.Timer timer;
     private readonly Icon onlineIcon;
@@ -48,6 +51,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
         highlightIssueItem.Checked = settings.HighlightIssue;
         highlightIssueItem.CheckedChanged += (_, _) => TrySetHighlightIssue(highlightIssueItem.Checked);
 
+        highlightAreaMenu = new ToolStripMenuItem("Highlight area");
+        RebuildHighlightAreaMenu();
+
+        highlightColorItem = new ToolStripMenuItem("Highlight color");
+        highlightColorItem.Click += (_, _) => TrySetHighlightColor();
+        UpdateHighlightColorPreview();
+
         intervalMenu = new ToolStripMenuItem("Ping interval");
         RebuildIntervalMenu();
 
@@ -62,6 +72,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(autostartItem);
         menu.Items.Add(highlightIssueItem);
+        menu.Items.Add(highlightAreaMenu);
+        menu.Items.Add(highlightColorItem);
         menu.Items.Add(intervalMenu);
         menu.Items.Add(checkNowItem);
         menu.Items.Add(new ToolStripSeparator());
@@ -83,6 +95,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         };
 
         issueHighlightOverlay = new IssueHighlightOverlay();
+        ApplyHighlightOptions();
 
         timer = new System.Windows.Forms.Timer { Interval = 250 };
         timer.Tick += async (_, _) =>
@@ -228,6 +241,35 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private static string FormatInterval(int seconds) =>
         seconds < 60 ? $"{seconds} seconds" : $"{seconds / 60} minutes";
 
+    private void RebuildHighlightAreaMenu()
+    {
+        highlightAreaMenu.DropDownItems.Clear();
+
+        foreach (var area in Enum.GetValues<HighlightArea>())
+        {
+            var item = new ToolStripMenuItem(FormatHighlightArea(area))
+            {
+                CheckOnClick = true,
+                Checked = settings.HighlightArea == area,
+                Tag = area,
+            };
+
+            item.Click += (_, _) => TrySetHighlightArea(area);
+            highlightAreaMenu.DropDownItems.Add(item);
+        }
+    }
+
+    private static string FormatHighlightArea(HighlightArea area) =>
+        area switch
+        {
+            HighlightArea.FullScreen => "Full screen",
+            HighlightArea.Left => "Left",
+            HighlightArea.Right => "Right",
+            HighlightArea.Top => "Top",
+            HighlightArea.Bottom => "Bottom",
+            _ => area.ToString(),
+        };
+
     private void TrySetAutostart(bool enabled)
     {
         if (suppressAutostartChange)
@@ -274,9 +316,91 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
     }
 
+    private void TrySetHighlightArea(HighlightArea area)
+    {
+        var previousValue = settings.HighlightArea;
+        settings.HighlightArea = area;
+
+        try
+        {
+            settings.Save();
+            ApplyHighlightOptions();
+            RebuildHighlightAreaMenu();
+        }
+        catch (Exception ex)
+        {
+            settings.HighlightArea = previousValue;
+            ApplyHighlightOptions();
+            RebuildHighlightAreaMenu();
+            ShowError("Could not save highlight area", ex);
+        }
+    }
+
+    private void TrySetHighlightColor()
+    {
+        using var dialog = new ColorDialog
+        {
+            AllowFullOpen = true,
+            AnyColor = true,
+            FullOpen = true,
+            SolidColorOnly = false,
+            Color = settings.HighlightColor,
+        };
+
+        if (dialog.ShowDialog() != DialogResult.OK)
+        {
+            return;
+        }
+
+        var previousValue = settings.HighlightColor;
+        settings.HighlightColor = dialog.Color;
+
+        try
+        {
+            settings.Save();
+            ApplyHighlightOptions();
+            UpdateHighlightColorPreview();
+        }
+        catch (Exception ex)
+        {
+            settings.HighlightColor = previousValue;
+            ApplyHighlightOptions();
+            UpdateHighlightColorPreview();
+            ShowError("Could not save highlight color", ex);
+        }
+    }
+
     private void UpdateIssueHighlight()
     {
+        ApplyHighlightOptions();
         issueHighlightOverlay.SetVisible(settings.HighlightIssue && !isOnline && !isExiting);
+    }
+
+    private void ApplyHighlightOptions()
+    {
+        issueHighlightOverlay.SetOptions(new HighlightOptions(settings.HighlightArea, settings.HighlightColor));
+    }
+
+    private void UpdateHighlightColorPreview()
+    {
+        highlightColorItem.Text = $"Highlight color: {FormatColor(settings.HighlightColor)}";
+        highlightColorItem.Image?.Dispose();
+        highlightColorItem.Image = CreateColorSwatch(settings.HighlightColor);
+    }
+
+    private static string FormatColor(Color color) =>
+        $"#{color.R:X2}{color.G:X2}{color.B:X2}";
+
+    private static Bitmap CreateColorSwatch(Color color)
+    {
+        var bitmap = new Bitmap(16, 16);
+        using var graphics = Graphics.FromImage(bitmap);
+        graphics.Clear(Color.Transparent);
+        using var fill = new SolidBrush(color);
+        using var border = new Pen(SystemColors.ControlDark);
+        graphics.FillRectangle(fill, 2, 2, 12, 12);
+        graphics.DrawRectangle(border, 2, 2, 12, 12);
+        return bitmap;
     }
 
     private void ShowError(string message, Exception ex)
@@ -294,9 +418,19 @@ internal sealed class TrayApplicationContext : ApplicationContext
 internal sealed class AppSettings
 {
     private const int DefaultIntervalSeconds = 30;
+    private static readonly Color DefaultHighlightColor = Color.Red;
 
     public int IntervalSeconds { get; set; } = DefaultIntervalSeconds;
     public bool HighlightIssue { get; set; }
+    public HighlightArea HighlightArea { get; set; } = HighlightArea.FullScreen;
+    public int HighlightColorArgb { get; set; } = DefaultHighlightColor.ToArgb();
+
+    [JsonIgnore]
+    public Color HighlightColor
+    {
+        get => Color.FromArgb(HighlightColorArgb);
+        set => HighlightColorArgb = Color.FromArgb(byte.MaxValue, value).ToArgb();
+    }
 
     private static string SettingsPath =>
         Path.Combine(
@@ -314,11 +448,12 @@ internal sealed class AppSettings
             }
 
             var settings = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(SettingsPath));
-            if (settings is null || !IntervalIsSupported(settings.IntervalSeconds))
+            if (settings is null)
             {
                 return new AppSettings();
             }
 
+            settings.Normalize();
             return settings;
         }
         catch
@@ -342,7 +477,33 @@ internal sealed class AppSettings
     }
 
     private static bool IntervalIsSupported(int seconds) => seconds is 5 or 10 or 30 or 60 or 300;
+
+    private void Normalize()
+    {
+        if (!IntervalIsSupported(IntervalSeconds))
+        {
+            IntervalSeconds = DefaultIntervalSeconds;
+        }
+
+        if (!Enum.IsDefined(HighlightArea))
+        {
+            HighlightArea = HighlightArea.FullScreen;
+        }
+
+        HighlightColor = HighlightColor;
+    }
 }
+
+internal enum HighlightArea
+{
+    FullScreen,
+    Left,
+    Right,
+    Top,
+    Bottom,
+}
+
+internal readonly record struct HighlightOptions(HighlightArea Area, Color Color);
 
 internal sealed class IssueHighlightOverlay : Form
 {
@@ -367,6 +528,7 @@ internal sealed class IssueHighlightOverlay : Form
     private IntPtr glowBitmapHandle;
     private IntPtr glowPreviousObject;
     private Size renderedGlowSize = Size.Empty;
+    private HighlightOptions options = new(HighlightArea.FullScreen, Color.Red);
 
     public IssueHighlightOverlay()
     {
@@ -433,6 +595,22 @@ internal sealed class IssueHighlightOverlay : Form
         }
     }
 
+    public void SetOptions(HighlightOptions newOptions)
+    {
+        if (options == newOptions)
+        {
+            return;
+        }
+
+        options = newOptions;
+        DisposeGlowResources();
+
+        if (Visible)
+        {
+            RenderGlow();
+        }
+    }
+
     protected override void Dispose(bool disposing)
     {
         if (disposing)
@@ -476,7 +654,7 @@ internal sealed class IssueHighlightOverlay : Form
         {
             graphics.CompositingMode = CompositingMode.SourceOver;
             graphics.Clear(Color.Transparent);
-            DrawGlow(graphics, bitmap.Size);
+            DrawGlow(graphics, bitmap.Size, options);
         }
 
         var screenDc = GetDC(IntPtr.Zero);
@@ -528,25 +706,50 @@ internal sealed class IssueHighlightOverlay : Form
         return MinPulseIntensity + (1d - MinPulseIntensity) * wave;
     }
 
-    private static void DrawGlow(Graphics graphics, Size size)
+    private static void DrawGlow(Graphics graphics, Size size, HighlightOptions options)
     {
         var maxDepth = Math.Min(GlowSize, Math.Min(size.Width, size.Height) / 2);
         for (var offset = 0; offset < maxDepth; offset++)
         {
             var alpha = GetGlowAlpha(offset);
-            using var brush = new SolidBrush(Color.FromArgb(alpha, 255, 0, 0));
+            using var brush = new SolidBrush(Color.FromArgb(alpha, options.Color));
 
-            graphics.FillRectangle(brush, 0, offset, size.Width, 1);
-            graphics.FillRectangle(brush, 0, size.Height - offset - 1, size.Width, 1);
-            graphics.FillRectangle(brush, offset, 0, 1, size.Height);
-            graphics.FillRectangle(brush, size.Width - offset - 1, 0, 1, size.Height);
+            FillHighlightArea(graphics, brush, size, options.Area, offset, 1);
         }
 
-        using var edgeBrush = new SolidBrush(Color.FromArgb(MaxGlowAlpha, 255, 0, 0));
-        graphics.FillRectangle(edgeBrush, 0, 0, size.Width, EdgeWidth);
-        graphics.FillRectangle(edgeBrush, 0, size.Height - EdgeWidth, size.Width, EdgeWidth);
-        graphics.FillRectangle(edgeBrush, 0, 0, EdgeWidth, size.Height);
-        graphics.FillRectangle(edgeBrush, size.Width - EdgeWidth, 0, EdgeWidth, size.Height);
+        using var edgeBrush = new SolidBrush(Color.FromArgb(MaxGlowAlpha, options.Color));
+        FillHighlightArea(graphics, edgeBrush, size, options.Area, 0, EdgeWidth);
+    }
+
+    private static void FillHighlightArea(
+        Graphics graphics,
+        Brush brush,
+        Size size,
+        HighlightArea area,
+        int offset,
+        int thickness)
+    {
+        switch (area)
+        {
+            case HighlightArea.FullScreen:
+                FillHighlightArea(graphics, brush, size, HighlightArea.Top, offset, thickness);
+                FillHighlightArea(graphics, brush, size, HighlightArea.Bottom, offset, thickness);
+                FillHighlightArea(graphics, brush, size, HighlightArea.Left, offset, thickness);
+                FillHighlightArea(graphics, brush, size, HighlightArea.Right, offset, thickness);
+                break;
+            case HighlightArea.Top:
+                graphics.FillRectangle(brush, 0, offset, size.Width, thickness);
+                break;
+            case HighlightArea.Bottom:
+                graphics.FillRectangle(brush, 0, size.Height - offset - thickness, size.Width, thickness);
+                break;
+            case HighlightArea.Left:
+                graphics.FillRectangle(brush, offset, 0, thickness, size.Height);
+                break;
+            case HighlightArea.Right:
+                graphics.FillRectangle(brush, size.Width - offset - thickness, 0, thickness, size.Height);
+                break;
+        }
     }
 
     private static byte GetGlowAlpha(int offset)
