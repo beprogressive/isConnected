@@ -279,6 +279,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
             HighlightArea.Right => "Right",
             HighlightArea.Top => "Top",
             HighlightArea.Bottom => "Bottom",
+            HighlightArea.TopLeft => "Top-left corner",
+            HighlightArea.TopRight => "Top-right corner",
+            HighlightArea.BottomLeft => "Bottom-left corner",
+            HighlightArea.BottomRight => "Bottom-right corner",
             _ => area.ToString(),
         };
 
@@ -531,6 +535,10 @@ internal enum HighlightArea
     Right,
     Top,
     Bottom,
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
 }
 
 internal readonly record struct HighlightOptions(HighlightArea Area, Color Color);
@@ -539,7 +547,9 @@ internal sealed class IssueHighlightOverlay : Form
 {
     private const int EdgeWidth = 1;
     private const int GlowSize = 4;
+    private const int CornerGlowRadius = 180;
     private const byte MaxGlowAlpha = 255;
+    private const byte MaxCornerGlowAlpha = 210;
     private const double PulsePeriodMs = 2_800d;
     private const double MinPulseIntensity = 0.45d;
     private const int AcSrcOver = 0x00;
@@ -738,6 +748,12 @@ internal sealed class IssueHighlightOverlay : Form
 
     private static void DrawGlow(Graphics graphics, Size size, HighlightOptions options)
     {
+        if (IsCornerArea(options.Area))
+        {
+            DrawCornerGlow(graphics, size, options);
+            return;
+        }
+
         var maxDepth = Math.Min(GlowSize, Math.Min(size.Width, size.Height) / 2);
         for (var offset = 0; offset < maxDepth; offset++)
         {
@@ -750,6 +766,42 @@ internal sealed class IssueHighlightOverlay : Form
         using var edgeBrush = new SolidBrush(Color.FromArgb(MaxGlowAlpha, options.Color));
         FillHighlightArea(graphics, edgeBrush, size, options.Area, 0, EdgeWidth);
     }
+
+    private static void DrawCornerGlow(Graphics graphics, Size size, HighlightOptions options)
+    {
+        var radius = Math.Min(CornerGlowRadius, Math.Max(size.Width, size.Height));
+        var center = GetCornerGlowCenter(size, options.Area);
+        var bounds = new Rectangle(center.X - radius, center.Y - radius, radius * 2, radius * 2);
+
+        using var path = new GraphicsPath();
+        path.AddEllipse(bounds);
+
+        using var brush = new PathGradientBrush(path)
+        {
+            CenterPoint = center,
+            CenterColor = Color.FromArgb(MaxCornerGlowAlpha, options.Color),
+            SurroundColors = [Color.FromArgb(0, options.Color)],
+        };
+
+        graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        graphics.FillPath(brush, path);
+    }
+
+    private static bool IsCornerArea(HighlightArea area) =>
+        area is HighlightArea.TopLeft
+            or HighlightArea.TopRight
+            or HighlightArea.BottomLeft
+            or HighlightArea.BottomRight;
+
+    private static Point GetCornerGlowCenter(Size size, HighlightArea area) =>
+        area switch
+        {
+            HighlightArea.TopLeft => new Point(0, 0),
+            HighlightArea.TopRight => new Point(size.Width, 0),
+            HighlightArea.BottomLeft => new Point(0, size.Height),
+            HighlightArea.BottomRight => new Point(size.Width, size.Height),
+            _ => Point.Empty,
+        };
 
     private static void FillHighlightArea(
         Graphics graphics,
