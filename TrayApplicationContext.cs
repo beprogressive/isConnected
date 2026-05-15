@@ -352,6 +352,8 @@ internal sealed class IssueHighlightOverlay : Form
     private const int AcSrcOver = 0x00;
     private const int AcSrcAlpha = 0x01;
     private const int UlwAlpha = 0x00000002;
+    private const int WmNchittest = 0x0084;
+    private const int Httransparent = -1;
     private const int WsExLayered = 0x00080000;
     private const int WsExTransparent = 0x00000020;
     private const int WsExToolWindow = 0x00000080;
@@ -381,6 +383,17 @@ internal sealed class IssueHighlightOverlay : Form
             createParams.ExStyle |= WsExLayered | WsExToolWindow | WsExNoActivate | WsExTransparent;
             return createParams;
         }
+    }
+
+    protected override void WndProc(ref Message message)
+    {
+        if (message.Msg == WmNchittest)
+        {
+            message.Result = Httransparent;
+            return;
+        }
+
+        base.WndProc(ref message);
     }
 
     public void SetVisible(bool visible)
