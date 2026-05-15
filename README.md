@@ -8,7 +8,11 @@ Small Windows tray utility that checks internet connectivity by pinging Google's
 - Red crossed tray icon: ping failed.
 - Left-click or right-click the tray icon to open the menu.
 - `Autostart` toggles startup with Windows for the current user.
+- `Highlight issue` shows a pulsing visual warning when connectivity is offline.
+- `Highlight area` selects whether the warning appears around the full screen, on one edge, or from one corner.
+- `Highlight color` stores the selected warning color in `%APPDATA%\IsConnected\settings.json`.
 - `Ping interval` stores the selected frequency in `%APPDATA%\IsConnected\settings.json`.
+- `Test issue` previews the same issue effects for 5 seconds without disconnecting from the internet.
 
 ## Build
 
