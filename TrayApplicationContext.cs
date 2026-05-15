@@ -347,8 +347,8 @@ internal sealed class AppSettings
 internal sealed class IssueHighlightOverlay : Form
 {
     private const int EdgeWidth = 1;
-    private const int GlowSize = 14;
-    private const byte MaxGlowAlpha = 180;
+    private const int GlowSize = 4;
+    private const byte MaxGlowAlpha = 255;
     private const double PulsePeriodMs = 2_800d;
     private const double MinPulseIntensity = 0.45d;
     private const int AcSrcOver = 0x00;
@@ -480,7 +480,7 @@ internal sealed class IssueHighlightOverlay : Form
         for (var offset = 0; offset < maxDepth; offset++)
         {
             var alpha = GetGlowAlpha(offset, pulseIntensity);
-            using var brush = new SolidBrush(Color.FromArgb(alpha, 220, 53, 69));
+            using var brush = new SolidBrush(Color.FromArgb(alpha, 255, 0, 0));
 
             graphics.FillRectangle(brush, 0, offset, size.Width, 1);
             graphics.FillRectangle(brush, 0, size.Height - offset - 1, size.Width, 1);
@@ -488,7 +488,7 @@ internal sealed class IssueHighlightOverlay : Form
             graphics.FillRectangle(brush, size.Width - offset - 1, 0, 1, size.Height);
         }
 
-        using var edgeBrush = new SolidBrush(Color.FromArgb(ScaleAlpha(MaxGlowAlpha, pulseIntensity), 220, 53, 69));
+        using var edgeBrush = new SolidBrush(Color.FromArgb(ScaleAlpha(MaxGlowAlpha, pulseIntensity), 255, 0, 0));
         graphics.FillRectangle(edgeBrush, 0, 0, size.Width, EdgeWidth);
         graphics.FillRectangle(edgeBrush, 0, size.Height - EdgeWidth, size.Width, EdgeWidth);
         graphics.FillRectangle(edgeBrush, 0, 0, EdgeWidth, size.Height);
