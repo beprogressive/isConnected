@@ -11,6 +11,7 @@ internal sealed class CurrentSpeedOverlay : Form
     private const int WsExNoActivate = 0x08000000;
 
     private readonly Label label;
+    private SpeedOverlayCorner corner = SpeedOverlayCorner.TopRight;
 
     public CurrentSpeedOverlay()
     {
@@ -71,6 +72,20 @@ internal sealed class CurrentSpeedOverlay : Form
         Hide();
     }
 
+    public void SetCorner(SpeedOverlayCorner newCorner)
+    {
+        if (corner == newCorner)
+        {
+            return;
+        }
+
+        corner = newCorner;
+        if (Visible)
+        {
+            PositionOnPrimaryScreen();
+        }
+    }
+
     public void UpdateSpeed(NetworkSpeedSnapshot speed)
     {
         label.Text = speed.IsAvailable
@@ -111,6 +126,13 @@ internal sealed class CurrentSpeedOverlay : Form
     private void PositionOnPrimaryScreen()
     {
         var workingArea = Screen.PrimaryScreen?.WorkingArea ?? Screen.FromControl(this).WorkingArea;
-        Location = new Point(workingArea.Right - Width - 12, workingArea.Top + 12);
+        Location = corner switch
+        {
+            SpeedOverlayCorner.TopLeft => new Point(workingArea.Left + 12, workingArea.Top + 12),
+            SpeedOverlayCorner.TopRight => new Point(workingArea.Right - Width - 12, workingArea.Top + 12),
+            SpeedOverlayCorner.BottomLeft => new Point(workingArea.Left + 12, workingArea.Bottom - Height - 12),
+            SpeedOverlayCorner.BottomRight => new Point(workingArea.Right - Width - 12, workingArea.Bottom - Height - 12),
+            _ => new Point(workingArea.Right - Width - 12, workingArea.Top + 12),
+        };
     }
 }

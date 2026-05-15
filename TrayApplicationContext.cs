@@ -10,6 +10,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly ToolStripMenuItem autostartItem;
     private readonly ToolStripMenuItem highlightIssueItem;
     private readonly ToolStripMenuItem showCurrentSpeedItem;
+    private readonly ToolStripMenuItem speedOverlayCornerMenu;
     private readonly ToolStripMenuItem highlightAreaMenu;
     private readonly ToolStripMenuItem highlightColorItem;
     private readonly ToolStripMenuItem intervalMenu;
@@ -58,6 +59,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
         showCurrentSpeedItem.Checked = settings.ShowCurrentSpeed;
         showCurrentSpeedItem.CheckedChanged += (_, _) => TrySetShowCurrentSpeed(showCurrentSpeedItem.Checked);
 
+        speedOverlayCornerMenu = new ToolStripMenuItem("Speed overlay corner");
+        RebuildSpeedOverlayCornerMenu();
+
         highlightAreaMenu = new ToolStripMenuItem("Highlight area");
         RebuildHighlightAreaMenu();
 
@@ -86,6 +90,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         menu.Items.Add(autostartItem);
         menu.Items.Add(highlightIssueItem);
         menu.Items.Add(showCurrentSpeedItem);
+        menu.Items.Add(speedOverlayCornerMenu);
         menu.Items.Add(highlightAreaMenu);
         menu.Items.Add(highlightColorItem);
         menu.Items.Add(intervalMenu);
@@ -330,6 +335,24 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
     }
 
+    private void RebuildSpeedOverlayCornerMenu()
+    {
+        speedOverlayCornerMenu.DropDownItems.Clear();
+
+        foreach (var definition in SpeedOverlayCornerCatalog.All)
+        {
+            var item = new ToolStripMenuItem(definition.DisplayName)
+            {
+                CheckOnClick = true,
+                Checked = settings.SpeedOverlayCorner == definition.Corner,
+                Tag = definition.Corner,
+            };
+
+            item.Click += (_, _) => TrySetSpeedOverlayCorner(definition.Corner);
+            speedOverlayCornerMenu.DropDownItems.Add(item);
+        }
+    }
+
     private void TrySetHighlightArea(HighlightArea area)
     {
         var previousValue = settings.HighlightArea;
@@ -413,8 +436,29 @@ internal sealed class TrayApplicationContext : ApplicationContext
         issueHighlightOverlay.SetOptions(new HighlightOptions(settings.HighlightArea, settings.HighlightColor));
     }
 
+    private void TrySetSpeedOverlayCorner(SpeedOverlayCorner corner)
+    {
+        var previousValue = settings.SpeedOverlayCorner;
+        settings.SpeedOverlayCorner = corner;
+
+        try
+        {
+            settingsStore.Save(settings);
+            ApplyCurrentSpeedOptions();
+            RebuildSpeedOverlayCornerMenu();
+        }
+        catch (Exception ex)
+        {
+            settings.SpeedOverlayCorner = previousValue;
+            ApplyCurrentSpeedOptions();
+            RebuildSpeedOverlayCornerMenu();
+            ShowError("Could not save speed overlay corner", ex);
+        }
+    }
+
     private void ApplyCurrentSpeedVisibility()
     {
+        ApplyCurrentSpeedOptions();
         currentSpeedOverlay.SetVisible(settings.ShowCurrentSpeed && !isExiting);
 
         if (settings.ShowCurrentSpeed && !isExiting)
@@ -424,6 +468,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
 
         networkSpeedMonitor.Stop();
+    }
+
+    private void ApplyCurrentSpeedOptions()
+    {
+        currentSpeedOverlay.SetCorner(settings.SpeedOverlayCorner);
     }
 
     private void UpdateCurrentSpeed(NetworkSpeedSnapshot speed)
