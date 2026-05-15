@@ -24,7 +24,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly ToolStripMenuItem highlightAreaMenu;
     private readonly ToolStripMenuItem highlightColorItem;
     private readonly ToolStripMenuItem intervalMenu;
+    private readonly ToolStripMenuItem testIssueItem;
     private readonly System.Windows.Forms.Timer timer;
+    private readonly System.Windows.Forms.Timer issueTestTimer;
     private readonly Icon onlineIcon;
     private readonly Icon offlineIcon;
     private readonly AppSettings settings;
@@ -35,6 +37,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private bool isExiting;
     private bool suppressAutostartChange;
     private bool suppressHighlightIssueChange;
+    private bool issueTestActive;
 
     public TrayApplicationContext()
     {
@@ -64,6 +67,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
         var checkNowItem = new ToolStripMenuItem("Check now");
         checkNowItem.Click += async (_, _) => await CheckConnectivityAsync();
 
+        testIssueItem = new ToolStripMenuItem("Test issue");
+        testIssueItem.Click += (_, _) => StartIssueTest();
+
         var exitItem = new ToolStripMenuItem("Exit");
         exitItem.Click += (_, _) => ExitThread();
 
@@ -75,6 +81,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         menu.Items.Add(highlightAreaMenu);
         menu.Items.Add(highlightColorItem);
         menu.Items.Add(intervalMenu);
+        menu.Items.Add(testIssueItem);
         menu.Items.Add(checkNowItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(exitItem);
@@ -104,6 +111,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
             await CheckConnectivityAsync();
         };
         timer.Start();
+
+        issueTestTimer = new System.Windows.Forms.Timer { Interval = 5_000 };
+        issueTestTimer.Tick += (_, _) => StopIssueTest();
     }
 
     protected override void Dispose(bool disposing)
@@ -111,11 +121,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
         if (disposing)
         {
             isExiting = true;
+            issueTestTimer.Stop();
             timer.Stop();
             trayIcon.Visible = false;
             trayIcon.Dispose();
             issueHighlightOverlay.Dispose();
             menu.Dispose();
+            issueTestTimer.Dispose();
             timer.Dispose();
             onlineIcon.Dispose();
             offlineIcon.Dispose();
@@ -194,7 +206,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         statusItem.Text = $"{statusText} (last check {checkedAt})";
         trayIcon.Text = $"IsConnected: {statusText}";
-        UpdateIssueHighlight();
+        UpdateIssueEffects();
     }
 
     private void RebuildIntervalMenu()
@@ -303,7 +315,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         try
         {
             settings.Save();
-            UpdateIssueHighlight();
+            UpdateIssueEffects();
         }
         catch (Exception ex)
         {
@@ -311,7 +323,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             suppressHighlightIssueChange = true;
             highlightIssueItem.Checked = previousValue;
             suppressHighlightIssueChange = false;
-            UpdateIssueHighlight();
+            UpdateIssueEffects();
             ShowError("Could not save issue highlight setting", ex);
         }
     }
@@ -370,10 +382,28 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
     }
 
-    private void UpdateIssueHighlight()
+    private void StartIssueTest()
     {
+        issueTestActive = true;
+        testIssueItem.Enabled = false;
+        issueTestTimer.Stop();
+        issueTestTimer.Start();
+        UpdateIssueEffects();
+    }
+
+    private void StopIssueTest()
+    {
+        issueTestTimer.Stop();
+        issueTestActive = false;
+        testIssueItem.Enabled = true;
+        UpdateIssueEffects();
+    }
+
+    private void UpdateIssueEffects()
+    {
+        var issueActive = (!isOnline || issueTestActive) && !isExiting;
         ApplyHighlightOptions();
-        issueHighlightOverlay.SetVisible(settings.HighlightIssue && !isOnline && !isExiting);
+        issueHighlightOverlay.SetVisible(settings.HighlightIssue && issueActive);
     }
 
     private void ApplyHighlightOptions()
