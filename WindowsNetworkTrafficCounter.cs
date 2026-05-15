@@ -9,6 +9,8 @@ internal sealed class WindowsNetworkTrafficCounter : INetworkTrafficCounter
     private const uint IfTypeSoftwareLoopback = 24;
     private static readonly IPAddress[] RouteProbeAddresses =
     [
+        IPAddress.Parse("2001:4860:4860::8888"),
+        IPAddress.Parse("2606:4700:4700::1111"),
         IPAddress.Parse("8.8.8.8"),
         IPAddress.Parse("1.1.1.1"),
     ];
@@ -53,18 +55,29 @@ internal sealed class WindowsNetworkTrafficCounter : INetworkTrafficCounter
 
     private static bool TryGetBestInterfaceIndex(IPAddress address, out uint interfaceIndex)
     {
-        var bytes = address.GetAddressBytes();
-        if (BitConverter.IsLittleEndian)
+        if (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
         {
-            Array.Reverse(bytes);
+            var socketAddress = SockAddrIn.Create(address);
+            var ipv4Result = GetBestInterfaceEx(ref socketAddress, out interfaceIndex);
+            return ipv4Result == NoError;
         }
 
-        var result = GetBestInterface(BitConverter.ToUInt32(bytes), out interfaceIndex);
-        return result == NoError;
+        if (address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetworkV6)
+        {
+            interfaceIndex = 0;
+            return false;
+        }
+
+        var socketAddressV6 = SockAddrIn6.Create(address);
+        var ipv6Result = GetBestInterfaceEx(ref socketAddressV6, out interfaceIndex);
+        return ipv6Result == NoError;
     }
 
-    [DllImport("iphlpapi.dll")]
-    private static extern uint GetBestInterface(uint destinationAddress, out uint bestInterfaceIndex);
+    [DllImport("iphlpapi.dll", EntryPoint = "GetBestInterfaceEx")]
+    private static extern uint GetBestInterfaceEx(ref SockAddrIn destinationAddress, out uint bestInterfaceIndex);
+
+    [DllImport("iphlpapi.dll", EntryPoint = "GetBestInterfaceEx")]
+    private static extern uint GetBestInterfaceEx(ref SockAddrIn6 destinationAddress, out uint bestInterfaceIndex);
 
     [DllImport("iphlpapi.dll", SetLastError = true)]
     private static extern uint GetIfEntry2(ref MibIfRow2 row);
@@ -72,6 +85,51 @@ internal sealed class WindowsNetworkTrafficCounter : INetworkTrafficCounter
     private enum IfOperStatus : uint
     {
         Up = 1,
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct SockAddrIn
+    {
+        private const ushort AddressFamilyInterNetwork = 2;
+
+        public ushort Family;
+        public ushort Port;
+
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
+        public byte[] Address;
+
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]
+        public byte[] Zero;
+
+        public static SockAddrIn Create(IPAddress address) =>
+            new()
+            {
+                Family = AddressFamilyInterNetwork,
+                Address = address.GetAddressBytes(),
+                Zero = new byte[8],
+            };
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct SockAddrIn6
+    {
+        private const ushort AddressFamilyInterNetworkV6 = 23;
+
+        public ushort Family;
+        public ushort Port;
+        public uint FlowInfo;
+
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)]
+        public byte[] Address;
+
+        public uint ScopeId;
+
+        public static SockAddrIn6 Create(IPAddress address) =>
+            new()
+            {
+                Family = AddressFamilyInterNetworkV6,
+                Address = address.GetAddressBytes(),
+            };
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]

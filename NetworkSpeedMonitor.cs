@@ -13,6 +13,7 @@ internal sealed class NetworkSpeedMonitor : IDisposable
     private uint primaryInterfaceIndex;
     private long previousTimestamp;
     private bool hasPreviousSample;
+    private int resetRequested;
 
     public NetworkSpeedMonitor()
         : this(new WindowsNetworkTrafficCounter())
@@ -33,6 +34,7 @@ internal sealed class NetworkSpeedMonitor : IDisposable
 
     public void Start()
     {
+        Interlocked.Exchange(ref resetRequested, 0);
         ResetBaseline();
         timer.Start();
     }
@@ -40,6 +42,7 @@ internal sealed class NetworkSpeedMonitor : IDisposable
     public void Stop()
     {
         timer.Stop();
+        Interlocked.Exchange(ref resetRequested, 0);
         hasPreviousSample = false;
         SpeedChanged?.Invoke(this, NetworkSpeedSnapshot.Unavailable);
     }
@@ -51,7 +54,8 @@ internal sealed class NetworkSpeedMonitor : IDisposable
         timer.Dispose();
     }
 
-    private void HandleNetworkChanged(object? sender, EventArgs args) => ResetBaseline();
+    private void HandleNetworkChanged(object? sender, EventArgs args) =>
+        Interlocked.Exchange(ref resetRequested, 1);
 
     private void ResetBaseline()
     {
@@ -73,6 +77,12 @@ internal sealed class NetworkSpeedMonitor : IDisposable
 
     private void PublishSample()
     {
+        if (Interlocked.Exchange(ref resetRequested, 0) == 1)
+        {
+            ResetBaseline();
+            return;
+        }
+
         if (primaryInterfaceIndex == 0
             || !trafficCounter.TryReadInterfaceSample(primaryInterfaceIndex, out var currentSample))
         {
