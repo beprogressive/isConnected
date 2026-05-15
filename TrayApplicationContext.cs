@@ -363,6 +363,10 @@ internal sealed class IssueHighlightOverlay : Form
 
     private readonly System.Windows.Forms.Timer pulseTimer;
     private readonly Stopwatch pulseStopwatch = new();
+    private IntPtr glowMemoryDc;
+    private IntPtr glowBitmapHandle;
+    private IntPtr glowPreviousObject;
+    private Size renderedGlowSize = Size.Empty;
 
     public IssueHighlightOverlay()
     {
@@ -433,6 +437,7 @@ internal sealed class IssueHighlightOverlay : Form
         if (disposing)
         {
             pulseTimer.Dispose();
+            DisposeGlowResources();
         }
 
         base.Dispose(disposing);
@@ -451,15 +456,63 @@ internal sealed class IssueHighlightOverlay : Form
             return;
         }
 
-        using var bitmap = new Bitmap(Width, Height, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+        EnsureGlowResources(new Size(Width, Height));
+        ApplyLayeredBitmap(GetPulseIntensity());
+    }
+
+    private void EnsureGlowResources(Size size)
+    {
+        if (glowMemoryDc != IntPtr.Zero && glowBitmapHandle != IntPtr.Zero && renderedGlowSize == size)
+        {
+            return;
+        }
+
+        DisposeGlowResources();
+
+        // The glow shape is static; pulse frames only adjust SourceConstantAlpha to avoid full-screen bitmap churn.
+        using var bitmap = new Bitmap(size.Width, size.Height, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
         using (var graphics = Graphics.FromImage(bitmap))
         {
             graphics.CompositingMode = CompositingMode.SourceOver;
             graphics.Clear(Color.Transparent);
-            DrawGlow(graphics, bitmap.Size, GetPulseIntensity());
+            DrawGlow(graphics, bitmap.Size);
         }
 
-        ApplyLayeredBitmap(bitmap);
+        var screenDc = GetDC(IntPtr.Zero);
+        try
+        {
+            glowMemoryDc = CreateCompatibleDC(screenDc);
+            glowBitmapHandle = bitmap.GetHbitmap(Color.FromArgb(0));
+            glowPreviousObject = SelectObject(glowMemoryDc, glowBitmapHandle);
+            renderedGlowSize = size;
+        }
+        finally
+        {
+            ReleaseDC(IntPtr.Zero, screenDc);
+        }
+    }
+
+    private void DisposeGlowResources()
+    {
+        if (glowMemoryDc != IntPtr.Zero)
+        {
+            SelectObject(glowMemoryDc, glowPreviousObject);
+        }
+
+        if (glowBitmapHandle != IntPtr.Zero)
+        {
+            DeleteObject(glowBitmapHandle);
+        }
+
+        if (glowMemoryDc != IntPtr.Zero)
+        {
+            DeleteDC(glowMemoryDc);
+        }
+
+        glowMemoryDc = IntPtr.Zero;
+        glowBitmapHandle = IntPtr.Zero;
+        glowPreviousObject = IntPtr.Zero;
+        renderedGlowSize = Size.Empty;
     }
 
     private double GetPulseIntensity()
@@ -474,12 +527,12 @@ internal sealed class IssueHighlightOverlay : Form
         return MinPulseIntensity + (1d - MinPulseIntensity) * wave;
     }
 
-    private static void DrawGlow(Graphics graphics, Size size, double pulseIntensity)
+    private static void DrawGlow(Graphics graphics, Size size)
     {
         var maxDepth = Math.Min(GlowSize, Math.Min(size.Width, size.Height) / 2);
         for (var offset = 0; offset < maxDepth; offset++)
         {
-            var alpha = GetGlowAlpha(offset, pulseIntensity);
+            var alpha = GetGlowAlpha(offset);
             using var brush = new SolidBrush(Color.FromArgb(alpha, 255, 0, 0));
 
             graphics.FillRectangle(brush, 0, offset, size.Width, 1);
@@ -488,38 +541,35 @@ internal sealed class IssueHighlightOverlay : Form
             graphics.FillRectangle(brush, size.Width - offset - 1, 0, 1, size.Height);
         }
 
-        using var edgeBrush = new SolidBrush(Color.FromArgb(ScaleAlpha(MaxGlowAlpha, pulseIntensity), 255, 0, 0));
+        using var edgeBrush = new SolidBrush(Color.FromArgb(MaxGlowAlpha, 255, 0, 0));
         graphics.FillRectangle(edgeBrush, 0, 0, size.Width, EdgeWidth);
         graphics.FillRectangle(edgeBrush, 0, size.Height - EdgeWidth, size.Width, EdgeWidth);
         graphics.FillRectangle(edgeBrush, 0, 0, EdgeWidth, size.Height);
         graphics.FillRectangle(edgeBrush, size.Width - EdgeWidth, 0, EdgeWidth, size.Height);
     }
 
-    private static byte GetGlowAlpha(int offset, double pulseIntensity)
+    private static byte GetGlowAlpha(int offset)
     {
         var distance = Math.Max(0d, 1d - (double)offset / GlowSize);
-        return ScaleAlpha(MaxGlowAlpha * distance * distance, pulseIntensity);
+        return ScaleAlpha(MaxGlowAlpha * distance * distance);
     }
 
-    private static byte ScaleAlpha(double alpha, double pulseIntensity) =>
-        (byte)Math.Round(Math.Clamp(alpha * pulseIntensity, 0d, byte.MaxValue));
+    private static byte ScaleAlpha(double alpha) =>
+        (byte)Math.Round(Math.Clamp(alpha, 0d, byte.MaxValue));
 
-    private void ApplyLayeredBitmap(Bitmap bitmap)
+    private void ApplyLayeredBitmap(double pulseIntensity)
     {
         var screenDc = GetDC(IntPtr.Zero);
-        var memoryDc = CreateCompatibleDC(screenDc);
-        var bitmapHandle = bitmap.GetHbitmap(Color.FromArgb(0));
-        var previousObject = SelectObject(memoryDc, bitmapHandle);
 
         try
         {
-            var size = new NativeSize(bitmap.Width, bitmap.Height);
+            var size = new NativeSize(renderedGlowSize.Width, renderedGlowSize.Height);
             var source = new NativePoint(0, 0);
             var destination = new NativePoint(Left, Top);
             var blend = new BlendFunction
             {
                 BlendOp = AcSrcOver,
-                SourceConstantAlpha = 255,
+                SourceConstantAlpha = ScaleAlpha(byte.MaxValue * pulseIntensity),
                 AlphaFormat = AcSrcAlpha,
             };
 
@@ -528,7 +578,7 @@ internal sealed class IssueHighlightOverlay : Form
                 screenDc,
                 ref destination,
                 ref size,
-                memoryDc,
+                glowMemoryDc,
                 ref source,
                 0,
                 ref blend,
@@ -536,9 +586,6 @@ internal sealed class IssueHighlightOverlay : Form
         }
         finally
         {
-            SelectObject(memoryDc, previousObject);
-            DeleteObject(bitmapHandle);
-            DeleteDC(memoryDc);
             ReleaseDC(IntPtr.Zero, screenDc);
         }
     }
