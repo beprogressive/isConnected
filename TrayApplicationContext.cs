@@ -791,8 +791,8 @@ internal sealed class IssueHighlightOverlay : Form
         };
         brush.Blend = new Blend
         {
-            Factors = [1f, 0.18f, 0.025f, 0f],
-            Positions = [0f, 0.22f, 0.55f, 1f],
+            Factors = [0f, 0.025f, 0.18f, 1f],
+            Positions = [0f, 0.45f, 0.78f, 1f],
         };
 
         graphics.FillPath(brush, path);
