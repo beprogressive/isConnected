@@ -19,16 +19,19 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly ContextMenuStrip menu;
     private readonly ToolStripMenuItem statusItem;
     private readonly ToolStripMenuItem autostartItem;
+    private readonly ToolStripMenuItem highlightIssueItem;
     private readonly ToolStripMenuItem intervalMenu;
     private readonly System.Windows.Forms.Timer timer;
     private readonly Icon onlineIcon;
     private readonly Icon offlineIcon;
     private readonly AppSettings settings;
+    private readonly IssueHighlightOverlay issueHighlightOverlay;
 
     private bool checkInProgress;
     private bool isOnline;
     private bool isExiting;
     private bool suppressAutostartChange;
+    private bool suppressHighlightIssueChange;
 
     public TrayApplicationContext()
     {
@@ -40,6 +43,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
         autostartItem = new ToolStripMenuItem("Autostart") { CheckOnClick = true };
         autostartItem.Checked = AutostartManager.IsEnabled();
         autostartItem.CheckedChanged += (_, _) => TrySetAutostart(autostartItem.Checked);
+
+        highlightIssueItem = new ToolStripMenuItem("Highlight issue") { CheckOnClick = true };
+        highlightIssueItem.Checked = settings.HighlightIssue;
+        highlightIssueItem.CheckedChanged += (_, _) => TrySetHighlightIssue(highlightIssueItem.Checked);
 
         intervalMenu = new ToolStripMenuItem("Ping interval");
         RebuildIntervalMenu();
@@ -54,6 +61,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         menu.Items.Add(statusItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(autostartItem);
+        menu.Items.Add(highlightIssueItem);
         menu.Items.Add(intervalMenu);
         menu.Items.Add(checkNowItem);
         menu.Items.Add(new ToolStripSeparator());
@@ -74,6 +82,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
             }
         };
 
+        issueHighlightOverlay = new IssueHighlightOverlay();
+
         timer = new System.Windows.Forms.Timer { Interval = 250 };
         timer.Tick += async (_, _) =>
         {
@@ -91,6 +101,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             timer.Stop();
             trayIcon.Visible = false;
             trayIcon.Dispose();
+            issueHighlightOverlay.Dispose();
             menu.Dispose();
             timer.Dispose();
             onlineIcon.Dispose();
@@ -170,6 +181,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         statusItem.Text = $"{statusText} (last check {checkedAt})";
         trayIcon.Text = $"IsConnected: {statusText}";
+        UpdateIssueHighlight();
     }
 
     private void RebuildIntervalMenu()
@@ -236,6 +248,37 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
     }
 
+    private void TrySetHighlightIssue(bool enabled)
+    {
+        if (suppressHighlightIssueChange)
+        {
+            return;
+        }
+
+        var previousValue = settings.HighlightIssue;
+        settings.HighlightIssue = enabled;
+
+        try
+        {
+            settings.Save();
+            UpdateIssueHighlight();
+        }
+        catch (Exception ex)
+        {
+            settings.HighlightIssue = previousValue;
+            suppressHighlightIssueChange = true;
+            highlightIssueItem.Checked = previousValue;
+            suppressHighlightIssueChange = false;
+            UpdateIssueHighlight();
+            ShowError("Could not save issue highlight setting", ex);
+        }
+    }
+
+    private void UpdateIssueHighlight()
+    {
+        issueHighlightOverlay.SetVisible(settings.HighlightIssue && !isOnline && !isExiting);
+    }
+
     private void ShowError(string message, Exception ex)
     {
         if (isExiting)
@@ -253,6 +296,7 @@ internal sealed class AppSettings
     private const int DefaultIntervalSeconds = 30;
 
     public int IntervalSeconds { get; set; } = DefaultIntervalSeconds;
+    public bool HighlightIssue { get; set; }
 
     private static string SettingsPath =>
         Path.Combine(
@@ -298,6 +342,84 @@ internal sealed class AppSettings
     }
 
     private static bool IntervalIsSupported(int seconds) => seconds is 5 or 10 or 30 or 60 or 300;
+}
+
+internal sealed class IssueHighlightOverlay : Form
+{
+    private const int OverlayWidth = 120;
+    private const int WsExTransparent = 0x00000020;
+    private const int WsExToolWindow = 0x00000080;
+    private const int WsExNoActivate = 0x08000000;
+
+    public IssueHighlightOverlay()
+    {
+        AutoScaleMode = AutoScaleMode.None;
+        BackColor = Color.FromArgb(220, 53, 69);
+        ControlBox = false;
+        FormBorderStyle = FormBorderStyle.None;
+        MaximizeBox = false;
+        MinimizeBox = false;
+        Opacity = 0.45;
+        ShowIcon = false;
+        ShowInTaskbar = false;
+        StartPosition = FormStartPosition.Manual;
+        TopMost = true;
+    }
+
+    protected override bool ShowWithoutActivation => true;
+
+    protected override CreateParams CreateParams
+    {
+        get
+        {
+            var createParams = base.CreateParams;
+            // Keeps the visual warning out of Alt+Tab, prevents focus stealing, and lets clicks pass through.
+            createParams.ExStyle |= WsExToolWindow | WsExNoActivate | WsExTransparent;
+            return createParams;
+        }
+    }
+
+    public void SetVisible(bool visible)
+    {
+        if (visible)
+        {
+            PositionOnPrimaryScreen();
+            if (!Visible)
+            {
+                Show();
+            }
+
+            return;
+        }
+
+        if (Visible)
+        {
+            Hide();
+        }
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+
+        using var brush = new LinearGradientBrush(
+            ClientRectangle,
+            Color.FromArgb(30, 220, 53, 69),
+            Color.FromArgb(255, 220, 53, 69),
+            LinearGradientMode.Horizontal);
+
+        e.Graphics.FillRectangle(brush, ClientRectangle);
+    }
+
+    private void PositionOnPrimaryScreen()
+    {
+        var bounds = Screen.PrimaryScreen?.Bounds ?? Screen.FromControl(this).Bounds;
+        Bounds = new Rectangle(
+            bounds.Right - OverlayWidth,
+            bounds.Top,
+            OverlayWidth,
+            bounds.Height);
+    }
 }
 
 internal static class AutostartManager
