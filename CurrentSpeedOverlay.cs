@@ -10,7 +10,9 @@ internal sealed class CurrentSpeedOverlay : Form
     private const int WsExToolWindow = 0x00000080;
     private const int WsExNoActivate = 0x08000000;
 
-    private readonly Label label;
+    private readonly Label downloadValueLabel;
+    private readonly Label uploadValueLabel;
+    private readonly TableLayoutPanel speedLayout;
     private SpeedOverlayCorner corner = SpeedOverlayCorner.TopRight;
 
     public CurrentSpeedOverlay()
@@ -25,21 +27,34 @@ internal sealed class CurrentSpeedOverlay : Form
         Padding = new Padding(8, 5, 8, 5);
         ShowIcon = false;
         ShowInTaskbar = false;
-        Size = new Size(156, 48);
+        Size = new Size(150, 48);
         StartPosition = FormStartPosition.Manual;
         TopMost = true;
 
-        label = new Label
+        speedLayout = new TableLayoutPanel
         {
-            AutoSize = false,
             BackColor = Color.Transparent,
             Dock = DockStyle.Fill,
-            Font = SystemFonts.MessageBoxFont,
-            ForeColor = Color.White,
-            TextAlign = ContentAlignment.MiddleLeft,
+            ColumnCount = 3,
+            RowCount = 2,
         };
+        speedLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 18));
+        speedLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        speedLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 38));
+        speedLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+        speedLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
 
-        Controls.Add(label);
+        downloadValueLabel = CreateLabel(ContentAlignment.MiddleRight);
+        uploadValueLabel = CreateLabel(ContentAlignment.MiddleRight);
+
+        speedLayout.Controls.Add(CreateLabel(ContentAlignment.MiddleLeft, "↓"), 0, 0);
+        speedLayout.Controls.Add(downloadValueLabel, 1, 0);
+        speedLayout.Controls.Add(CreateLabel(ContentAlignment.MiddleLeft, "MB/s"), 2, 0);
+        speedLayout.Controls.Add(CreateLabel(ContentAlignment.MiddleLeft, "↑"), 0, 1);
+        speedLayout.Controls.Add(uploadValueLabel, 1, 1);
+        speedLayout.Controls.Add(CreateLabel(ContentAlignment.MiddleLeft, "MB/s"), 2, 1);
+
+        Controls.Add(speedLayout);
         UpdateSpeed(NetworkSpeedSnapshot.Unavailable);
         SystemEvents.DisplaySettingsChanged += HandleDisplaySettingsChanged;
     }
@@ -88,9 +103,12 @@ internal sealed class CurrentSpeedOverlay : Form
 
     public void UpdateSpeed(NetworkSpeedSnapshot speed)
     {
-        label.Text = speed.IsAvailable
-            ? $"↓ {NetworkSpeedFormatter.FormatBitsPerSecond(speed.DownloadBitsPerSecond)}{Environment.NewLine}↑ {NetworkSpeedFormatter.FormatBitsPerSecond(speed.UploadBitsPerSecond)}"
-            : $"↓ --{Environment.NewLine}↑ --";
+        downloadValueLabel.Text = speed.IsAvailable
+            ? NetworkSpeedFormatter.FormatMegabytesPerSecondValue(speed.DownloadBitsPerSecond)
+            : "--";
+        uploadValueLabel.Text = speed.IsAvailable
+            ? NetworkSpeedFormatter.FormatMegabytesPerSecondValue(speed.UploadBitsPerSecond)
+            : "--";
     }
 
     protected override void WndProc(ref Message message)
@@ -109,11 +127,24 @@ internal sealed class CurrentSpeedOverlay : Form
         if (disposing)
         {
             SystemEvents.DisplaySettingsChanged -= HandleDisplaySettingsChanged;
-            label.Dispose();
+            speedLayout.Dispose();
         }
 
         base.Dispose(disposing);
     }
+
+    private static Label CreateLabel(ContentAlignment textAlign, string text = "") =>
+        new()
+        {
+            AutoSize = false,
+            BackColor = Color.Transparent,
+            Dock = DockStyle.Fill,
+            Font = SystemFonts.MessageBoxFont,
+            ForeColor = Color.White,
+            Margin = Padding.Empty,
+            Text = text,
+            TextAlign = textAlign,
+        };
 
     private void HandleDisplaySettingsChanged(object? sender, EventArgs args)
     {
