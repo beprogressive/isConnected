@@ -346,7 +346,13 @@ internal sealed class AppSettings
 
 internal sealed class IssueHighlightOverlay : Form
 {
-    private const int OverlayWidth = 120;
+    private const int EdgeWidth = 2;
+    private const int GlowSize = 28;
+    private const byte MaxGlowAlpha = 180;
+    private const int AcSrcOver = 0x00;
+    private const int AcSrcAlpha = 0x01;
+    private const int UlwAlpha = 0x00000002;
+    private const int WsExLayered = 0x00080000;
     private const int WsExTransparent = 0x00000020;
     private const int WsExToolWindow = 0x00000080;
     private const int WsExNoActivate = 0x08000000;
@@ -354,12 +360,10 @@ internal sealed class IssueHighlightOverlay : Form
     public IssueHighlightOverlay()
     {
         AutoScaleMode = AutoScaleMode.None;
-        BackColor = Color.FromArgb(220, 53, 69);
         ControlBox = false;
         FormBorderStyle = FormBorderStyle.None;
         MaximizeBox = false;
         MinimizeBox = false;
-        Opacity = 0.45;
         ShowIcon = false;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.Manual;
@@ -374,7 +378,7 @@ internal sealed class IssueHighlightOverlay : Form
         {
             var createParams = base.CreateParams;
             // Keeps the visual warning out of Alt+Tab, prevents focus stealing, and lets clicks pass through.
-            createParams.ExStyle |= WsExToolWindow | WsExNoActivate | WsExTransparent;
+            createParams.ExStyle |= WsExLayered | WsExToolWindow | WsExNoActivate | WsExTransparent;
             return createParams;
         }
     }
@@ -389,6 +393,7 @@ internal sealed class IssueHighlightOverlay : Form
                 Show();
             }
 
+            RenderGlow();
             return;
         }
 
@@ -398,27 +403,147 @@ internal sealed class IssueHighlightOverlay : Form
         }
     }
 
-    protected override void OnPaint(PaintEventArgs e)
-    {
-        base.OnPaint(e);
-
-        using var brush = new LinearGradientBrush(
-            ClientRectangle,
-            Color.FromArgb(30, 220, 53, 69),
-            Color.FromArgb(255, 220, 53, 69),
-            LinearGradientMode.Horizontal);
-
-        e.Graphics.FillRectangle(brush, ClientRectangle);
-    }
-
     private void PositionOnPrimaryScreen()
     {
         var bounds = Screen.PrimaryScreen?.Bounds ?? Screen.FromControl(this).Bounds;
-        Bounds = new Rectangle(
-            bounds.Right - OverlayWidth,
-            bounds.Top,
-            OverlayWidth,
-            bounds.Height);
+        Bounds = bounds;
+    }
+
+    private void RenderGlow()
+    {
+        if (Width <= 0 || Height <= 0)
+        {
+            return;
+        }
+
+        using var bitmap = new Bitmap(Width, Height, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+        using (var graphics = Graphics.FromImage(bitmap))
+        {
+            graphics.CompositingMode = CompositingMode.SourceOver;
+            graphics.Clear(Color.Transparent);
+            DrawGlow(graphics, bitmap.Size);
+        }
+
+        ApplyLayeredBitmap(bitmap);
+    }
+
+    private static void DrawGlow(Graphics graphics, Size size)
+    {
+        var maxDepth = Math.Min(GlowSize, Math.Min(size.Width, size.Height) / 2);
+        for (var offset = 0; offset < maxDepth; offset++)
+        {
+            var alpha = GetGlowAlpha(offset);
+            using var brush = new SolidBrush(Color.FromArgb(alpha, 220, 53, 69));
+
+            graphics.FillRectangle(brush, 0, offset, size.Width, 1);
+            graphics.FillRectangle(brush, 0, size.Height - offset - 1, size.Width, 1);
+            graphics.FillRectangle(brush, offset, 0, 1, size.Height);
+            graphics.FillRectangle(brush, size.Width - offset - 1, 0, 1, size.Height);
+        }
+
+        using var edgeBrush = new SolidBrush(Color.FromArgb(MaxGlowAlpha, 220, 53, 69));
+        graphics.FillRectangle(edgeBrush, 0, 0, size.Width, EdgeWidth);
+        graphics.FillRectangle(edgeBrush, 0, size.Height - EdgeWidth, size.Width, EdgeWidth);
+        graphics.FillRectangle(edgeBrush, 0, 0, EdgeWidth, size.Height);
+        graphics.FillRectangle(edgeBrush, size.Width - EdgeWidth, 0, EdgeWidth, size.Height);
+    }
+
+    private static byte GetGlowAlpha(int offset)
+    {
+        var distance = Math.Max(0d, 1d - (double)offset / GlowSize);
+        return (byte)Math.Round(MaxGlowAlpha * distance * distance);
+    }
+
+    private void ApplyLayeredBitmap(Bitmap bitmap)
+    {
+        var screenDc = GetDC(IntPtr.Zero);
+        var memoryDc = CreateCompatibleDC(screenDc);
+        var bitmapHandle = bitmap.GetHbitmap(Color.FromArgb(0));
+        var previousObject = SelectObject(memoryDc, bitmapHandle);
+
+        try
+        {
+            var size = new NativeSize(bitmap.Width, bitmap.Height);
+            var source = new NativePoint(0, 0);
+            var destination = new NativePoint(Left, Top);
+            var blend = new BlendFunction
+            {
+                BlendOp = AcSrcOver,
+                SourceConstantAlpha = 255,
+                AlphaFormat = AcSrcAlpha,
+            };
+
+            UpdateLayeredWindow(
+                Handle,
+                screenDc,
+                ref destination,
+                ref size,
+                memoryDc,
+                ref source,
+                0,
+                ref blend,
+                UlwAlpha);
+        }
+        finally
+        {
+            SelectObject(memoryDc, previousObject);
+            DeleteObject(bitmapHandle);
+            DeleteDC(memoryDc);
+            ReleaseDC(IntPtr.Zero, screenDc);
+        }
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr GetDC(IntPtr hWnd);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern int ReleaseDC(IntPtr hWnd, IntPtr hDc);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    private static extern IntPtr CreateCompatibleDC(IntPtr hDc);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    private static extern bool DeleteDC(IntPtr hDc);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    private static extern IntPtr SelectObject(IntPtr hDc, IntPtr hObject);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    private static extern bool DeleteObject(IntPtr hObject);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool UpdateLayeredWindow(
+        IntPtr hWnd,
+        IntPtr hdcDst,
+        ref NativePoint pptDst,
+        ref NativeSize pSize,
+        IntPtr hdcSrc,
+        ref NativePoint pptSrc,
+        int crKey,
+        ref BlendFunction pBlend,
+        int dwFlags);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private readonly struct NativePoint(int x, int y)
+    {
+        public readonly int X = x;
+        public readonly int Y = y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private readonly struct NativeSize(int width, int height)
+    {
+        public readonly int Width = width;
+        public readonly int Height = height;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct BlendFunction
+    {
+        public byte BlendOp;
+        public byte BlendFlags;
+        public byte SourceConstantAlpha;
+        public byte AlphaFormat;
     }
 }
 
