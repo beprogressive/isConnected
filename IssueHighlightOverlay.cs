@@ -5,7 +5,89 @@ using System.Runtime.InteropServices;
 
 namespace IsConnected;
 
-internal sealed class IssueHighlightOverlay : Form
+internal sealed class IssueHighlightOverlay : IDisposable
+{
+    private readonly List<IssueHighlightOverlaySurface> surfaces = [];
+    private HighlightOptions options = new(HighlightArea.FullScreen, Color.Red);
+    private bool visible;
+    private string screenLayoutSignature = string.Empty;
+
+    public void SetVisible(bool newVisible)
+    {
+        visible = newVisible;
+
+        if (visible)
+        {
+            EnsureSurfacesForCurrentScreens();
+            foreach (var surface in surfaces)
+            {
+                surface.SetVisible(true);
+            }
+
+            return;
+        }
+
+        foreach (var surface in surfaces)
+        {
+            surface.SetVisible(false);
+        }
+    }
+
+    public void SetOptions(HighlightOptions newOptions)
+    {
+        if (options == newOptions)
+        {
+            return;
+        }
+
+        options = newOptions;
+        foreach (var surface in surfaces)
+        {
+            surface.SetOptions(options);
+        }
+    }
+
+    public void Dispose()
+    {
+        DisposeSurfaces();
+    }
+
+    private void EnsureSurfacesForCurrentScreens()
+    {
+        var screens = Screen.AllScreens;
+        var currentSignature = string.Join('|', screens.Select(GetScreenSignature));
+        if (screenLayoutSignature == currentSignature)
+        {
+            return;
+        }
+
+        DisposeSurfaces();
+        screenLayoutSignature = currentSignature;
+
+        foreach (var screen in screens)
+        {
+            var surface = new IssueHighlightOverlaySurface(screen.Bounds);
+            surface.SetOptions(options);
+            surfaces.Add(surface);
+        }
+    }
+
+    private void DisposeSurfaces()
+    {
+        foreach (var surface in surfaces)
+        {
+            surface.Dispose();
+        }
+
+        surfaces.Clear();
+        screenLayoutSignature = string.Empty;
+    }
+
+    private static string GetScreenSignature(Screen screen) =>
+        $"{screen.DeviceName}:{screen.Bounds.X},{screen.Bounds.Y},{screen.Bounds.Width},{screen.Bounds.Height}";
+}
+
+internal sealed class IssueHighlightOverlaySurface : Form
 {
     private const int EdgeWidth = 1;
     private const int GlowSize = 4;
@@ -27,14 +109,17 @@ internal sealed class IssueHighlightOverlay : Form
 
     private readonly System.Windows.Forms.Timer pulseTimer;
     private readonly Stopwatch pulseStopwatch = new();
+    private readonly Rectangle screenBounds;
     private IntPtr glowMemoryDc;
     private IntPtr glowBitmapHandle;
     private IntPtr glowPreviousObject;
     private Size renderedGlowSize = Size.Empty;
     private HighlightOptions options = new(HighlightArea.FullScreen, Color.Red);
 
-    public IssueHighlightOverlay()
+    public IssueHighlightOverlaySurface(Rectangle screenBounds)
     {
+        this.screenBounds = screenBounds;
+
         AutoScaleMode = AutoScaleMode.None;
         ControlBox = false;
         FormBorderStyle = FormBorderStyle.None;
@@ -77,7 +162,7 @@ internal sealed class IssueHighlightOverlay : Form
     {
         if (visible)
         {
-            PositionOnPrimaryScreen();
+            PositionOnScreen();
             if (!Visible)
             {
                 Show();
@@ -125,10 +210,9 @@ internal sealed class IssueHighlightOverlay : Form
         base.Dispose(disposing);
     }
 
-    private void PositionOnPrimaryScreen()
+    private void PositionOnScreen()
     {
-        var bounds = Screen.PrimaryScreen?.Bounds ?? Screen.FromControl(this).Bounds;
-        Bounds = bounds;
+        Bounds = screenBounds;
     }
 
     private void RenderGlow()
