@@ -15,6 +15,7 @@ The app is intentionally lightweight: it reports whether either target responds 
 - `Highlight color` stores the selected warning color in `%APPDATA%\IsConnected\settings.json`.
 - `Ping interval` stores the selected frequency in `%APPDATA%\IsConnected\settings.json`.
 - `Test issue` previews the same issue effects for 5 seconds without disconnecting from the internet.
+- `About` shows the app version and a link to the GitHub repository.
 
 Only one instance can run per user session. If another instance is already running, a new launch exits immediately.
 
