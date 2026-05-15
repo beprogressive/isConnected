@@ -429,6 +429,7 @@ internal sealed class IssueHighlightOverlay : Form
             pulseTimer.Stop();
             pulseStopwatch.Reset();
             Hide();
+            DisposeGlowResources();
         }
     }
 
