@@ -547,7 +547,8 @@ internal sealed class IssueHighlightOverlay : Form
 {
     private const int EdgeWidth = 1;
     private const int GlowSize = 4;
-    private const int CornerGlowRadius = 180;
+    private const int CornerGlowRadius = 420;
+    private const int CornerGlowCenterOffset = 140;
     private const byte MaxGlowAlpha = 255;
     private const byte MaxCornerGlowAlpha = 210;
     private const double PulsePeriodMs = 2_800d;
@@ -796,10 +797,13 @@ internal sealed class IssueHighlightOverlay : Form
     private static Point GetCornerGlowCenter(Size size, HighlightArea area) =>
         area switch
         {
-            HighlightArea.TopLeft => new Point(0, 0),
-            HighlightArea.TopRight => new Point(size.Width, 0),
-            HighlightArea.BottomLeft => new Point(0, size.Height),
-            HighlightArea.BottomRight => new Point(size.Width, size.Height),
+            // The center sits outside the visible screen so the shown arc feels like a large off-screen glow.
+            HighlightArea.TopLeft => new Point(-CornerGlowCenterOffset, -CornerGlowCenterOffset),
+            HighlightArea.TopRight => new Point(size.Width + CornerGlowCenterOffset, -CornerGlowCenterOffset),
+            HighlightArea.BottomLeft => new Point(-CornerGlowCenterOffset, size.Height + CornerGlowCenterOffset),
+            HighlightArea.BottomRight => new Point(
+                size.Width + CornerGlowCenterOffset,
+                size.Height + CornerGlowCenterOffset),
             _ => Point.Empty,
         };
 
