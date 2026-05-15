@@ -789,6 +789,11 @@ internal sealed class IssueHighlightOverlay : Form
                 Color.FromArgb(0, options.Color),
             ],
         };
+        brush.Blend = new Blend
+        {
+            Factors = [1f, 0.18f, 0.025f, 0f],
+            Positions = [0f, 0.22f, 0.55f, 1f],
+        };
 
         graphics.FillPath(brush, path);
 
