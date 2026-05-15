@@ -346,9 +346,11 @@ internal sealed class AppSettings
 
 internal sealed class IssueHighlightOverlay : Form
 {
-    private const int EdgeWidth = 2;
-    private const int GlowSize = 28;
+    private const int EdgeWidth = 1;
+    private const int GlowSize = 14;
     private const byte MaxGlowAlpha = 180;
+    private const double PulsePeriodMs = 2_800d;
+    private const double MinPulseIntensity = 0.45d;
     private const int AcSrcOver = 0x00;
     private const int AcSrcAlpha = 0x01;
     private const int UlwAlpha = 0x00000002;
@@ -358,6 +360,9 @@ internal sealed class IssueHighlightOverlay : Form
     private const int WsExTransparent = 0x00000020;
     private const int WsExToolWindow = 0x00000080;
     private const int WsExNoActivate = 0x08000000;
+
+    private readonly System.Windows.Forms.Timer pulseTimer;
+    private readonly Stopwatch pulseStopwatch = new();
 
     public IssueHighlightOverlay()
     {
@@ -370,6 +375,9 @@ internal sealed class IssueHighlightOverlay : Form
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.Manual;
         TopMost = true;
+
+        pulseTimer = new System.Windows.Forms.Timer { Interval = 33 };
+        pulseTimer.Tick += (_, _) => RenderGlow();
     }
 
     protected override bool ShowWithoutActivation => true;
@@ -404,6 +412,8 @@ internal sealed class IssueHighlightOverlay : Form
             if (!Visible)
             {
                 Show();
+                pulseStopwatch.Restart();
+                pulseTimer.Start();
             }
 
             RenderGlow();
@@ -412,8 +422,20 @@ internal sealed class IssueHighlightOverlay : Form
 
         if (Visible)
         {
+            pulseTimer.Stop();
+            pulseStopwatch.Reset();
             Hide();
         }
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            pulseTimer.Dispose();
+        }
+
+        base.Dispose(disposing);
     }
 
     private void PositionOnPrimaryScreen()
@@ -434,18 +456,30 @@ internal sealed class IssueHighlightOverlay : Form
         {
             graphics.CompositingMode = CompositingMode.SourceOver;
             graphics.Clear(Color.Transparent);
-            DrawGlow(graphics, bitmap.Size);
+            DrawGlow(graphics, bitmap.Size, GetPulseIntensity());
         }
 
         ApplyLayeredBitmap(bitmap);
     }
 
-    private static void DrawGlow(Graphics graphics, Size size)
+    private double GetPulseIntensity()
+    {
+        if (!pulseStopwatch.IsRunning)
+        {
+            return 1d;
+        }
+
+        var progress = pulseStopwatch.Elapsed.TotalMilliseconds % PulsePeriodMs / PulsePeriodMs;
+        var wave = (Math.Sin(progress * Math.Tau - Math.PI / 2d) + 1d) / 2d;
+        return MinPulseIntensity + (1d - MinPulseIntensity) * wave;
+    }
+
+    private static void DrawGlow(Graphics graphics, Size size, double pulseIntensity)
     {
         var maxDepth = Math.Min(GlowSize, Math.Min(size.Width, size.Height) / 2);
         for (var offset = 0; offset < maxDepth; offset++)
         {
-            var alpha = GetGlowAlpha(offset);
+            var alpha = GetGlowAlpha(offset, pulseIntensity);
             using var brush = new SolidBrush(Color.FromArgb(alpha, 220, 53, 69));
 
             graphics.FillRectangle(brush, 0, offset, size.Width, 1);
@@ -454,18 +488,21 @@ internal sealed class IssueHighlightOverlay : Form
             graphics.FillRectangle(brush, size.Width - offset - 1, 0, 1, size.Height);
         }
 
-        using var edgeBrush = new SolidBrush(Color.FromArgb(MaxGlowAlpha, 220, 53, 69));
+        using var edgeBrush = new SolidBrush(Color.FromArgb(ScaleAlpha(MaxGlowAlpha, pulseIntensity), 220, 53, 69));
         graphics.FillRectangle(edgeBrush, 0, 0, size.Width, EdgeWidth);
         graphics.FillRectangle(edgeBrush, 0, size.Height - EdgeWidth, size.Width, EdgeWidth);
         graphics.FillRectangle(edgeBrush, 0, 0, EdgeWidth, size.Height);
         graphics.FillRectangle(edgeBrush, size.Width - EdgeWidth, 0, EdgeWidth, size.Height);
     }
 
-    private static byte GetGlowAlpha(int offset)
+    private static byte GetGlowAlpha(int offset, double pulseIntensity)
     {
         var distance = Math.Max(0d, 1d - (double)offset / GlowSize);
-        return (byte)Math.Round(MaxGlowAlpha * distance * distance);
+        return ScaleAlpha(MaxGlowAlpha * distance * distance, pulseIntensity);
     }
+
+    private static byte ScaleAlpha(double alpha, double pulseIntensity) =>
+        (byte)Math.Round(Math.Clamp(alpha * pulseIntensity, 0d, byte.MaxValue));
 
     private void ApplyLayeredBitmap(Bitmap bitmap)
     {
