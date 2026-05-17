@@ -15,7 +15,7 @@ The app is intentionally lightweight: it reports whether either target responds 
 - `Speed overlay corner` selects which primary screen corner shows the current speed overlay.
 - `Highlight area` selects whether the warning appears around every connected screen, on one edge, or from one corner.
 - `Highlight color` stores the selected warning color in `%APPDATA%\IsConnected\settings.json`.
-- `Ping interval` stores the selected frequency in `%APPDATA%\IsConnected\settings.json`.
+- `Ping interval` stores the selected frequency in `%APPDATA%\IsConnected\settings.json`. Scheduled checks use a small jitter so many installed clients do not ping at the exact same moment.
 - `Test issue` previews the same issue effects for 5 seconds without disconnecting from the internet.
 - `About` shows the app version and a link to the GitHub repository.
 
@@ -27,7 +27,7 @@ User preferences are stored in `%APPDATA%\IsConnected\settings.json`.
 
 Current settings:
 
-- `IntervalSeconds`: ping frequency. Supported values are `5`, `10`, `30`, `60`, and `300`.
+- `IntervalSeconds`: ping frequency. Supported values are `1`, `5`, `10`, `30`, `60`, and `300`.
 - `HighlightIssue`: enables or disables the offline visual warning.
 - `ShowCurrentSpeed`: enables or disables the current network speed overlay.
 - `SpeedOverlayCorner`: current speed overlay placement. Supported values are `TopLeft`, `TopRight`, `BottomLeft`, and `BottomRight`.

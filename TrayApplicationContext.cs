@@ -2,6 +2,10 @@ namespace IsConnected;
 
 internal sealed class TrayApplicationContext : ApplicationContext
 {
+    private const int InitialCheckDelayMs = 250;
+    private const int MaximumJitterMs = 5_000;
+    private const int JitterDivisor = 10;
+
     private readonly IConnectivityChecker connectivityChecker;
     private readonly AppSettingsStore settingsStore;
     private readonly NotifyIcon trayIcon;
@@ -73,7 +77,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         RebuildIntervalMenu();
 
         var checkNowItem = new ToolStripMenuItem("Check now");
-        checkNowItem.Click += async (_, _) => await CheckConnectivityAsync();
+        checkNowItem.Click += async (_, _) => await CheckNowAsync();
 
         testIssueItem = new ToolStripMenuItem("Test issue");
         testIssueItem.Click += (_, _) => StartIssueTest();
@@ -122,12 +126,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
         ApplyHighlightOptions();
         ApplyCurrentSpeedVisibility();
 
-        timer = new System.Windows.Forms.Timer { Interval = 250 };
-        timer.Tick += async (_, _) =>
-        {
-            ApplyTimerInterval();
-            await CheckConnectivityAsync();
-        };
+        timer = new System.Windows.Forms.Timer { Interval = InitialCheckDelayMs };
+        timer.Tick += async (_, _) => await RunScheduledCheckAsync();
         timer.Start();
 
         issueTestTimer = new System.Windows.Forms.Timer { Interval = 5_000 };
@@ -179,6 +179,44 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
     }
 
+    private async Task RunScheduledCheckAsync()
+    {
+        if (isExiting)
+        {
+            return;
+        }
+
+        timer.Stop();
+
+        try
+        {
+            await CheckConnectivityAsync();
+        }
+        finally
+        {
+            ScheduleNextCheck();
+        }
+    }
+
+    private async Task CheckNowAsync()
+    {
+        if (checkInProgress)
+        {
+            return;
+        }
+
+        timer.Stop();
+
+        try
+        {
+            await CheckConnectivityAsync();
+        }
+        finally
+        {
+            ScheduleNextCheck();
+        }
+    }
+
     private void SetStatus(ConnectivityCheckResult result)
     {
         if (isExiting)
@@ -225,25 +263,57 @@ internal sealed class TrayApplicationContext : ApplicationContext
         try
         {
             settingsStore.Save(settings);
-            ApplyTimerInterval();
+            RestartCheckTimer();
             RebuildIntervalMenu();
         }
         catch (Exception ex)
         {
             settings.IntervalSeconds = previousIntervalSeconds;
-            ApplyTimerInterval();
+            RestartCheckTimer();
             RebuildIntervalMenu();
             ShowError("Could not save ping interval", ex);
         }
     }
 
-    private void ApplyTimerInterval()
+    private void RestartCheckTimer()
     {
-        timer.Interval = Math.Max(1, settings.IntervalSeconds) * 1_000;
+        timer.Stop();
+
+        if (!checkInProgress)
+        {
+            ScheduleNextCheck();
+        }
+    }
+
+    private void ScheduleNextCheck()
+    {
+        if (isExiting)
+        {
+            return;
+        }
+
+        timer.Interval = GetNextCheckDelayMs();
+        timer.Start();
+    }
+
+    private int GetNextCheckDelayMs()
+    {
+        var baseDelayMs = Math.Max(1, settings.IntervalSeconds) * 1_000;
+        var jitterMs = Math.Min(baseDelayMs / JitterDivisor, MaximumJitterMs);
+
+        if (jitterMs == 0)
+        {
+            return baseDelayMs;
+        }
+
+        // Spread checks across installed clients without changing the user's selected interval meaningfully.
+        return baseDelayMs + Random.Shared.Next(-jitterMs, jitterMs + 1);
     }
 
     private static string FormatInterval(int seconds) =>
-        seconds < 60 ? $"{seconds} seconds" : $"{seconds / 60} minutes";
+        seconds < 60
+            ? $"{seconds} second{(seconds == 1 ? string.Empty : "s")}"
+            : $"{seconds / 60} minutes";
 
     private void RebuildHighlightAreaMenu()
     {
