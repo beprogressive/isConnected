@@ -1,53 +1,54 @@
 using System.Drawing.Drawing2D;
+using System.Reflection;
 using System.Runtime.InteropServices;
 
 namespace IsConnected;
 
 internal static class TrayIconFactory
 {
+    private const string AppIconResourceName = "Assets.app.ico";
+    private const int TrayIconSize = 64;
+
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool DestroyIcon(IntPtr hIcon);
 
-    public static Icon CreateNetworkIcon(Color color, bool crossedOut)
+    public static Icon CreateAppIcon() => LoadAppIcon();
+
+    public static Icon CreateOfflineAppIcon()
     {
-        using var bitmap = new Bitmap(64, 64);
+        using var appIcon = LoadAppIcon();
+        using var bitmap = appIcon.ToBitmap();
         using var graphics = Graphics.FromImage(bitmap);
         graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        graphics.Clear(Color.Transparent);
 
-        using var pen = new Pen(color, 6)
+        using var slashBack = new Pen(Color.White, 12)
         {
             StartCap = LineCap.Round,
             EndCap = LineCap.Round,
-            LineJoin = LineJoin.Round,
         };
-        using var fill = new SolidBrush(color);
-
-        graphics.DrawLine(pen, 14, 45, 50, 45);
-        graphics.DrawLine(pen, 32, 45, 32, 22);
-        graphics.DrawLine(pen, 20, 22, 44, 22);
-        graphics.FillEllipse(fill, 9, 40, 10, 10);
-        graphics.FillEllipse(fill, 27, 40, 10, 10);
-        graphics.FillEllipse(fill, 45, 40, 10, 10);
-        graphics.FillEllipse(fill, 27, 17, 10, 10);
-
-        if (crossedOut)
+        using var slash = new Pen(Color.FromArgb(220, 53, 69), 7)
         {
-            using var slashBack = new Pen(Color.White, 12)
-            {
-                StartCap = LineCap.Round,
-                EndCap = LineCap.Round,
-            };
-            using var slash = new Pen(color, 7)
-            {
-                StartCap = LineCap.Round,
-                EndCap = LineCap.Round,
-            };
+            StartCap = LineCap.Round,
+            EndCap = LineCap.Round,
+        };
 
-            graphics.DrawLine(slashBack, 12, 12, 52, 52);
-            graphics.DrawLine(slash, 12, 12, 52, 52);
-        }
+        graphics.DrawLine(slashBack, 12, 12, 52, 52);
+        graphics.DrawLine(slash, 12, 12, 52, 52);
 
+        return CreateIconFromBitmap(bitmap);
+    }
+
+    private static Icon LoadAppIcon()
+    {
+        var assembly = Assembly.GetExecutingAssembly();
+        using var stream = assembly.GetManifestResourceStream(AppIconResourceName)
+            ?? throw new InvalidOperationException($"Embedded app icon '{AppIconResourceName}' was not found.");
+
+        return new Icon(stream, TrayIconSize, TrayIconSize);
+    }
+
+    private static Icon CreateIconFromBitmap(Bitmap bitmap)
+    {
         var handle = bitmap.GetHicon();
         try
         {
