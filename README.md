@@ -2,6 +2,8 @@
 
 Small Windows tray utility that checks connectivity by sending ICMP ping requests to Google's public DNS server (`8.8.8.8`). If that ping fails, it sends one fallback ping to Cloudflare DNS (`1.1.1.1`) for that check cycle.
 
+When connectivity appears to be offline, IsConnected can show a pulsing colored glow warning overlay around the selected screen area, edge, or corner, making network problems visible without opening the tray menu.
+
 The app is intentionally lightweight: it reports whether either target responds to ICMP ping. It does not validate DNS resolution, HTTP access, captive portals, VPN routing, or service-specific availability. Networks that block ICMP can therefore be reported as offline even when browser traffic works.
 
 ## Behavior
