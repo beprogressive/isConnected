@@ -47,8 +47,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
         this.settingsStore = settingsStore;
         settings = settingsStore.Load();
 
-        onlineIcon = TrayIconFactory.CreateNetworkIcon(Color.FromArgb(38, 166, 91), false);
-        offlineIcon = TrayIconFactory.CreateNetworkIcon(Color.FromArgb(220, 53, 69), true);
+        onlineIcon = TrayIconFactory.CreateAppIcon();
+        offlineIcon = TrayIconFactory.CreateOfflineAppIcon();
 
         statusItem = new ToolStripMenuItem("Checking internet...") { Enabled = false };
         autostartItem = new ToolStripMenuItem("Autostart") { CheckOnClick = true };
