@@ -1,4 +1,8 @@
-# IsConnected
+<p align="center">
+  <img src="Branding/neon_signal_logo_vector.svg" alt="IsConnected logo" width="128" height="128">
+</p>
+
+<h1 align="center">IsConnected</h1>
 
 Small Windows tray utility that checks connectivity by sending ICMP ping requests to Google's public DNS server (`8.8.8.8`). If that ping fails, it sends one fallback ping to Cloudflare DNS (`1.1.1.1`) for that check cycle.
 
