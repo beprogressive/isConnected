@@ -8,6 +8,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private readonly IConnectivityChecker connectivityChecker;
     private readonly AppSettingsStore settingsStore;
+    private readonly TrayMenuHost trayMenuHost;
     private readonly NotifyIcon trayIcon;
     private readonly ContextMenuStrip menu;
     private readonly ToolStripMenuItem statusItem;
@@ -47,6 +48,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         this.settingsStore = settingsStore;
         settings = settingsStore.Load();
 
+        trayMenuHost = new TrayMenuHost();
         onlineIcon = TrayIconFactory.CreateAppIcon();
         offlineIcon = TrayIconFactory.CreateOfflineAppIcon();
 
@@ -115,7 +117,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         {
             if (args.Button == MouseButtons.Left)
             {
-                menu.Show(Cursor.Position);
+                trayMenuHost.ShowContextMenu(menu, Cursor.Position);
             }
         };
 
@@ -147,6 +149,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             currentSpeedOverlay.Dispose();
             issueHighlightOverlay.Dispose();
             menu.Dispose();
+            trayMenuHost.Dispose();
             issueTestTimer.Dispose();
             timer.Dispose();
             onlineIcon.Dispose();
