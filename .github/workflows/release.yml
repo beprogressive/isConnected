@@ -1,0 +1,71 @@
+name: Release
+
+# A version tag builds the installer and publishes it as a GitHub Release.
+# Pull requests that touch the app or the installer only build it and attach it to the run.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  pull_request:
+    paths:
+      - '**.cs'
+      - '*.csproj'
+      - 'Assets/**'
+      - 'installer/**'
+      - '.github/workflows/release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $options = @{}
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            $options.ExpectedVersion = $env:GITHUB_REF_NAME.TrimStart('v')
+          }
+          ./installer/build-installer.ps1 @options
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: installer
+          path: artifacts/installer/
+          if-no-files-found: error
+
+  release:
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: installer
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTES: |
+            Download **IsConnected-Setup.exe** below and run it. It needs no administrator rights and no separate .NET install.
+
+            The installer is not code-signed yet, so Windows SmartScreen may warn about it. To continue, choose **More info**, then **Run anyway**.
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            IsConnected-Setup.exe IsConnected-Setup.exe.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "IsConnected ${GITHUB_REF_NAME#v}" \
+            --notes "$NOTES" \
+            --generate-notes

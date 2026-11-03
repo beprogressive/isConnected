@@ -2,3 +2,4 @@ bin/
 obj/
 publish/
 publish-self-contained/
+artifacts/
