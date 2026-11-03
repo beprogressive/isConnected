@@ -1,6 +1,14 @@
-# IsConnected
+<p align="center">
+  <img src="Branding/neon_signal_logo_vector.svg" alt="IsConnected logo" width="128" height="128">
+</p>
 
-Small Windows tray utility that checks internet connectivity by pinging Google's public DNS server (`8.8.8.8`). If that ping fails, it makes one fallback ping to Cloudflare DNS (`1.1.1.1`) for that check cycle.
+<h1 align="center">IsConnected</h1>
+
+Small Windows tray utility that checks connectivity by sending ICMP ping requests to Google's public DNS server (`8.8.8.8`). If that ping fails, it sends one fallback ping to Cloudflare DNS (`1.1.1.1`) for that check cycle.
+
+When connectivity appears to be offline, IsConnected can show a pulsing colored glow warning overlay around the selected screen area, edge, or corner, making network problems visible without opening the tray menu.
+
+The app is intentionally lightweight: it reports whether either target responds to ICMP ping. It does not validate DNS resolution, HTTP access, captive portals, VPN routing, or service-specific availability. Networks that block ICMP can therefore be reported as offline even when browser traffic works.
 
 ## Behavior
 
@@ -8,7 +16,41 @@ Small Windows tray utility that checks internet connectivity by pinging Google's
 - Red crossed tray icon: ping failed.
 - Left-click or right-click the tray icon to open the menu.
 - `Autostart` toggles startup with Windows for the current user.
-- `Ping interval` stores the selected frequency in `%APPDATA%\IsConnected\settings.json`.
+- `Highlight issue` shows a pulsing visual warning when connectivity is offline.
+- `Show current speed` displays a lightweight top-right overlay with current download/upload traffic for the active Windows network interface. It reads Windows interface byte counters and does not generate network traffic.
+- `Speed overlay corner` selects which primary screen corner shows the current speed overlay.
+- `Highlight area` selects whether the warning appears around every connected screen, on one edge, or from one corner.
+- `Highlight color` stores the selected warning color in `%APPDATA%\IsConnected\settings.json`.
+- `Ping interval` stores the selected frequency in `%APPDATA%\IsConnected\settings.json`. Scheduled checks use a small jitter so many installed clients do not ping at the exact same moment.
+- `Test issue` previews the same issue effects for 5 seconds without disconnecting from the internet.
+- `About` shows the app version and a link to the GitHub repository.
+
+Only one instance can run per user session. If another instance is already running, a new launch exits immediately.
+
+## Settings
+
+User preferences are stored in `%APPDATA%\IsConnected\settings.json`.
+
+Current settings:
+
+- `IntervalSeconds`: ping frequency. Supported values are `1`, `5`, `10`, `30`, `60`, and `300`.
+- `HighlightIssue`: enables or disables the offline visual warning.
+- `ShowCurrentSpeed`: enables or disables the current network speed overlay.
+- `SpeedOverlayCorner`: current speed overlay placement. Supported values are `TopLeft`, `TopRight`, `BottomLeft`, and `BottomRight`.
+- `HighlightArea`: visual warning placement. Supported values are `FullScreen`, `Left`, `Right`, `Top`, `Bottom`, `TopLeft`, `TopRight`, `BottomLeft`, and `BottomRight`.
+- `HighlightColorArgb`: warning color stored as an ARGB integer.
+
+If the settings file is missing, unreadable, invalid, or contains unsupported values, the app falls back to defaults where needed.
+
+## Autostart
+
+`Autostart` writes the current executable path to the current user's Windows Run registry key:
+
+```text
+HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run
+```
+
+The setting is per Windows user and does not require administrator permissions under normal user profiles.
 
 ## Build
 
