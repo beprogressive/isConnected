@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>IsConnected</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<meta name="description" content="IsConnected is a tiny Windows tray utility that pings 8.8.8.8 and 1.1.1.1 and lights up the edge of your screen the moment the connection drops.">
+<meta name="description" content="A page won't load or a game freezes. IsConnected is a tiny Windows tray utility that tells you whether it's that server or your own internet connection.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Martian+Mono:wdth,wght@75..112.5,400..600&display=swap">
@@ -194,8 +194,6 @@ h1 {
   text-wrap: balance;
 }
 h1 .drop {
-  font-variation-settings: "wdth" 62;
-  font-weight: 900;
   color: var(--signal-ink);
   transition: color 0.3s;
 }
@@ -204,7 +202,7 @@ body.is-offline h1 .drop { color: var(--alert); }
   font-size: var(--step-1);
   line-height: 1.5;
   color: var(--muted);
-  max-width: 34ch;
+  max-width: 40ch;
   margin: 0 0 32px;
   text-wrap: pretty;
 }
@@ -400,6 +398,23 @@ body.is-offline .glow.on { animation: pulse 1.4s ease-in-out infinite alternate;
 .glow[data-area="BottomLeft"]  { background: radial-gradient(circle at 0 100%,    var(--hl) 0, color-mix(in srgb, var(--hl) 50%, transparent) 9%, transparent 30%); }
 .glow[data-area="BottomRight"] { background: radial-gradient(circle at 100% 100%, var(--hl) 0, color-mix(in srgb, var(--hl) 50%, transparent) 9%, transparent 30%); }
 
+.verdict {
+  margin: 0;
+  padding: 12px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-size: 0.95rem;
+  line-height: 1.45;
+  min-height: calc(1.45em * 2 + 24px);
+  display: flex;
+  align-items: center;
+}
+body.is-offline .verdict {
+  border-color: color-mix(in srgb, var(--alert) 45%, var(--line));
+  background: color-mix(in srgb, var(--alert) 8%, var(--surface));
+}
+
 /* ---------- Demo controls ---------- */
 .controls {
   display: grid;
@@ -518,6 +533,57 @@ h2 {
   text-wrap: balance;
 }
 .sec-head p { margin: 0; color: var(--muted); font-size: 1.08rem; max-width: 62ch; text-wrap: pretty; }
+
+/* Whose problem is it */
+.cases {
+  list-style: none;
+  margin: 0 0 clamp(32px, 5vw, 48px);
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(20px, 3vw, 36px);
+}
+.cases li { border-top: 2px solid var(--ink); padding-top: 14px; min-width: 0; }
+.cases h3 { margin: 0 0 6px; font-size: 1.05rem; font-weight: 750; }
+.cases p { margin: 0; color: var(--muted); }
+.verdicts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(16px, 2.5vw, 24px);
+}
+.v-card {
+  padding: clamp(20px, 3vw, 32px);
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  min-width: 0;
+}
+.v-down {
+  border-color: color-mix(in srgb, var(--alert) 55%, var(--line));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--alert) 35%, transparent), inset 0 0 36px -8px color-mix(in srgb, var(--alert) 45%, transparent);
+}
+.v-sign {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.v-sign svg { width: 22px; height: 22px; flex: none; }
+.v-card h3 {
+  margin: 0 0 10px;
+  font-family: var(--display);
+  font-variation-settings: "wdth" 112;
+  font-size: var(--step-2);
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+.v-down h3 { color: var(--alert); }
+.v-up h3 { color: var(--signal-ink); }
+.v-card p:last-child { margin: 0; color: var(--muted); max-width: 52ch; }
 
 /* How a check works — a real sequence, so the steps are numbered. */
 .flow {
@@ -727,7 +793,8 @@ footer .brand svg { width: 24px; height: 24px; }
 @media (max-width: 760px) {
   .controls { grid-template-columns: auto minmax(0, 1fr); }
   .controls .ctl-wide { grid-column: 1 / -1; }
-  .flow { grid-template-columns: minmax(0, 1fr); gap: 36px; }
+  .flow, .cases, .verdicts { grid-template-columns: minmax(0, 1fr); }
+  .flow { gap: 36px; }
   .flow li { padding: 0; }
   .flow li:not(:last-child) .host::after { display: none; }
   .scope, .install { grid-template-columns: minmax(0, 1fr); }
@@ -772,6 +839,7 @@ footer .brand svg { width: 24px; height: 24px; }
     IsConnected
   </a>
   <nav aria-label="Sections">
+    <a href="#why">Why</a>
     <a href="#how">How it works</a>
     <a href="#menu">Features</a>
     <a href="#scope">Limits</a>
@@ -783,8 +851,8 @@ footer .brand svg { width: 24px; height: 24px; }
   <div class="wrap hero">
     <div class="hero-copy">
       <p class="kicker"><span class="led" aria-hidden="true"></span><span id="kicker-text">Reply from 8.8.8.8 · 14 ms</span></p>
-      <h1>Know the second your internet <span class="drop">drops.</span></h1>
-      <p class="lede">IsConnected sits in the Windows tray, pings the internet on a schedule and makes the edge of your screen glow when nothing answers.</p>
+      <h1>Is it the server, or <span class="drop">your internet?</span></h1>
+      <p class="lede">A page won't open. A game freezes mid-match. IsConnected tells you right away whether that one server is the problem or your own connection is down.</p>
       <div class="ctas">
         <a class="btn btn-primary" href="#install">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12m0 0-5-5m5 5 5-5M5 20h14"/></svg>
@@ -804,15 +872,17 @@ footer .brand svg { width: 24px; height: 24px; }
           <div class="win">
             <div class="win-bar"><i></i><i></i></div>
             <div class="win-body">
-              <b id="win-title">Quarterly review.docx</b>
-              <span id="win-sub">Saved to cloud · 14:02</span>
+              <b id="win-title">Flights to Lisbon</b>
+              <span id="win-sub">Prices updated just now</span>
               <div class="line"></div><div class="line"></div><div class="line s"></div>
             </div>
           </div>
           <div class="win win-small">
             <div class="win-bar"><i></i><i></i></div>
             <div class="win-body">
-              <div class="line"></div><div class="line s"></div><div class="line"></div>
+              <b id="game-title">Ping 38 ms</b>
+              <span id="game-sub">Ranked match · 14 : 12</span>
+              <div class="line"></div><div class="line s"></div>
             </div>
           </div>
 
@@ -843,10 +913,12 @@ footer .brand svg { width: 24px; height: 24px; }
         </div>
       </div>
 
+      <p class="verdict" id="verdict" aria-live="polite">Everything answers. IsConnected stays green in the tray and out of your way.</p>
+
       <div class="controls">
         <div class="ctl">
           <span class="ctl-label">Try it</span>
-          <button class="outage" id="outage" type="button" aria-pressed="false"><span class="dot" aria-hidden="true"></span><span id="outage-text">Simulate an outage</span></button>
+          <button class="outage" id="outage" type="button" aria-pressed="false"><span class="dot" aria-hidden="true"></span><span id="outage-text">Drop my connection</span></button>
         </div>
         <div class="ctl">
           <span class="ctl-label" id="area-label">Highlight area</span>
@@ -867,12 +939,41 @@ footer .brand svg { width: 24px; height: 24px; }
     </div>
   </div>
 
+  <section id="why">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow">Before you blame the server</p>
+        <h2>One glance tells you whose problem it is</h2>
+        <p>When something online stops working, every app reports it its own way. A browser says the site can't be reached. A game says it lost the server. A call says the other person's connection is unstable. None of them tells you if the fault is on your side.</p>
+      </div>
+
+      <ul class="cases">
+        <li><h3>A page won't load</h3><p>Before you refresh it ten times or decide the site is down, look at the tray.</p></li>
+        <li><h3>A game lags or kicks you out</h3><p>Before you switch servers or blame the game, check whether your internet dropped. Set the interval to 1 second and even a short drop shows up mid-match.</p></li>
+        <li><h3>A call freezes</h3><p>Before you ask the other person to reconnect, find out whose connection actually went.</p></li>
+      </ul>
+
+      <div class="verdicts">
+        <div class="v-card v-down">
+          <p class="v-sign"><svg aria-hidden="true" viewBox="0 0 64 64"><use href="#icon-offline"/></svg>Screen glows, icon is red</p>
+          <h3>It's your connection</h3>
+          <p>Neither Google nor Cloudflare answers, so the problem is on your side. Check the Wi-Fi or cable, restart the router or wait it out. Refreshing the page or picking another game server won't help.</p>
+        </div>
+        <div class="v-card v-up">
+          <p class="v-sign"><svg aria-hidden="true"><use href="#logo"/></svg>No glow, icon is green</p>
+          <h3>Your internet is fine</h3>
+          <p>Your computer reaches the internet, so the site or game server you're using is the likely culprit. Check its status page or try again later.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section id="how">
     <div class="wrap">
       <div class="sec-head">
         <p class="eyebrow">ICMP echo · 1500 ms timeout</p>
-        <h2>One check, two chances to answer</h2>
-        <p>Every cycle starts with Google's public DNS. If it stays silent, IsConnected asks Cloudflare once before deciding you are offline, so a single flaky host doesn't turn your screen red.</p>
+        <h2>Two big providers, not one server</h2>
+        <p>To tell your connection apart from one bad server, IsConnected asks two independent ones. Each check starts with Google's public DNS. If it stays silent, Cloudflare gets one try before the app decides you're offline. Both going down at once is far less likely than your own line dropping.</p>
       </div>
 
       <ol class="flow">
@@ -917,7 +1018,7 @@ footer .brand svg { width: 24px; height: 24px; }
       <ul class="menu-map">
         <li><div class="mi disabled">Online, 14 ms via 8.8.8.8 (last check 14:02:11)</div><div class="desc"><span><strong>Status line.</strong> Round-trip time, which host answered and when the last check ran.</span></div></li>
         <li class="sep"><div class="mi"><span class="check">✓</span>Autostart</div><div class="desc"><span><strong>Start with Windows.</strong> Writes to your own <code>HKCU\…\Run</code> key, so no administrator rights are needed.</span></div></li>
-        <li><div class="mi"><span class="check">✓</span>Highlight issue</div><div class="desc"><span><strong>Glow on outage.</strong> A pulsing colored glow around your screens while you're offline. It ignores clicks, so you can keep working.</span></div></li>
+        <li><div class="mi"><span class="check">✓</span>Highlight issue</div><div class="desc"><span><strong>Glow on outage.</strong> A pulsing colored glow around your screens while you're offline, on top of the page or game in front of you. It ignores clicks, so nothing gets in your way.</span></div></li>
         <li><div class="mi">Show current speed</div><div class="desc"><span><strong>Live throughput.</strong> A small always-on-top readout of download and upload in MB/s. It reads Windows interface counters and sends no traffic of its own.</span></div></li>
         <li><div class="mi">Speed overlay corner <span class="sub">▸</span></div><div class="desc"><span>Top left, top right, bottom left or bottom right of the primary screen.</span></div></li>
         <li><div class="mi">Highlight area <span class="sub">▸</span></div><div class="desc"><span>Every connected screen, a single edge, or one corner: nine placements in all.</span></div></li>
@@ -936,23 +1037,23 @@ footer .brand svg { width: 24px; height: 24px; }
       <div class="sec-head">
         <p class="eyebrow">Know what it measures</p>
         <h2>Small on purpose</h2>
-        <p>IsConnected answers one question: does either of two well-known hosts reply to a ping? That keeps it light and fast, and it also sets the limits.</p>
+        <p>IsConnected answers one question: can your computer reach the internet right now? It finds out by pinging two well-known hosts. That keeps it light and fast, and it also sets the limits.</p>
       </div>
       <div class="scope">
         <div class="yes">
           <h3><span class="mark" aria-hidden="true">✓</span>What it tells you</h3>
           <ul>
-            <li>Whether 8.8.8.8 or 1.1.1.1 answers an ICMP echo</li>
-            <li>Round-trip time of the answer, in milliseconds</li>
+            <li>Whether your connection is up, judged by 8.8.8.8 or 1.1.1.1 answering a ping</li>
+            <li>How long the answer took, in milliseconds, in the tray menu</li>
             <li>Current download and upload speed of the active adapter</li>
           </ul>
         </div>
         <div class="no">
           <h3><span class="mark" aria-hidden="true">–</span>What it doesn't check</h3>
           <ul>
-            <li>DNS resolution or HTTP access to websites</li>
-            <li>Captive portals on hotel and airport Wi-Fi</li>
-            <li>VPN routing or whether a specific service is up</li>
+            <li>Whether one particular site or game server is up. A green icon only says your side works.</li>
+            <li>A slow connection that still works. High ping without dropped packets stays green; the tray menu shows the round-trip time.</li>
+            <li>DNS, captive portals on hotel and airport Wi-Fi, or VPN routing</li>
           </ul>
         </div>
         <p class="note">Some corporate and public networks block ICMP. On those, IsConnected reports offline even while your browser works fine.</p>
@@ -1039,6 +1140,9 @@ footer .brand svg { width: 24px; height: 24px; }
   var kicker = document.getElementById('kicker-text');
   var winTitle = document.getElementById('win-title');
   var winSub = document.getElementById('win-sub');
+  var gameTitle = document.getElementById('game-title');
+  var gameSub = document.getElementById('game-sub');
+  var verdict = document.getElementById('verdict');
   var speed = document.getElementById('speed');
   var speedToggle = document.getElementById('speed-toggle');
   var clock = document.getElementById('clock');
@@ -1100,9 +1204,14 @@ footer .brand svg { width: 24px; height: 24px; }
     offline = v;
     body.classList.toggle('is-offline', v);
     outage.setAttribute('aria-pressed', v ? 'true' : 'false');
-    outageText.textContent = v ? 'Restore connection' : 'Simulate an outage';
-    winTitle.textContent = v ? 'No internet' : 'Quarterly review.docx';
-    winSub.textContent = v ? 'Changes will sync when you reconnect' : 'Saved to cloud · ' + hhmm();
+    outageText.textContent = v ? 'Reconnect' : 'Drop my connection';
+    winTitle.textContent = v ? 'This site can’t be reached' : 'Flights to Lisbon';
+    winSub.textContent = v ? 'ERR_INTERNET_DISCONNECTED' : 'Prices updated just now';
+    gameTitle.textContent = v ? 'Reconnecting…' : 'Ping 38 ms';
+    gameSub.textContent = v ? 'Lost connection to server' : 'Ranked match · 14 : 12';
+    verdict.textContent = v
+      ? 'The browser blames the site and the game blames its server. The glow shows the real cause: your own connection is down.'
+      : 'Everything answers. IsConnected stays green in the tray and out of your way.';
     updateTip();
     tick();
   }
@@ -1159,7 +1268,6 @@ footer .brand svg { width: 24px; height: 24px; }
   seedLine(0, 13); seedLine(2, 15); seedLine(4, 14);
   tick();
   updateClock();
-  winSub.textContent = 'Saved to cloud · ' + hhmm();
   setInterval(tick, 2000);
   setInterval(updateClock, 15000);
 
