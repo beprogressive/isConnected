@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>IsConnected</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<meta name="description" content="A page won't load or a game freezes. IsConnected is a tiny Windows tray utility that tells you whether it's that server or your own internet connection.">
+<meta name="description" content="A page won't load or a game freezes. IsConnected makes the edge of your screen glow when your own internet connection is the cause, so you never blame the wrong server.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Martian+Mono:wdth,wght@75..112.5,400..600&display=swap">
@@ -571,7 +571,14 @@ h2 {
   font-size: 0.72rem;
   color: var(--muted);
 }
-.v-sign svg { width: 22px; height: 22px; flex: none; }
+.v-dot {
+  width: 30px; height: 19px;
+  flex: none;
+  border-radius: 3px;
+  background: linear-gradient(160deg, var(--desk-a), var(--desk-b));
+}
+.v-down .v-dot, .v-dot.lit { box-shadow: inset 0 0 0 1.5px var(--hl), inset 0 0 6px 2px var(--hl); }
+.flow .v-dot { width: 40px; height: 25px; }
 .v-card h3 {
   margin: 0 0 10px;
   font-family: var(--display);
@@ -584,6 +591,34 @@ h2 {
 .v-down h3 { color: var(--alert); }
 .v-up h3 { color: var(--signal-ink); }
 .v-card p:last-child { margin: 0; color: var(--muted); max-width: 52ch; }
+
+/* Glow placements */
+.looks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(20px, 3vw, 36px);
+}
+.looks li { min-width: 0; display: grid; gap: 6px; align-content: start; }
+.mini {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  max-width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 6px solid var(--ink);
+  background:
+    radial-gradient(120% 90% at 85% 10%, var(--desk-c) 0, transparent 55%),
+    linear-gradient(160deg, var(--desk-a) 0%, var(--desk-b) 100%);
+  margin-bottom: 10px;
+}
+.glow.always { opacity: 1; animation: pulse 1.4s ease-in-out infinite alternate; }
+.looks h3 { margin: 0; font-size: 1.05rem; font-weight: 750; }
+.looks p { margin: 0; color: var(--muted); }
+.looks-note { margin: clamp(24px, 4vw, 36px) 0 0; color: var(--muted); max-width: 70ch; }
+.looks-note strong { color: var(--ink); font-weight: 650; }
 
 /* How a check works — a real sequence, so the steps are numbered. */
 .flow {
@@ -793,7 +828,8 @@ footer .brand svg { width: 24px; height: 24px; }
 @media (max-width: 760px) {
   .controls { grid-template-columns: auto minmax(0, 1fr); }
   .controls .ctl-wide { grid-column: 1 / -1; }
-  .flow, .cases, .verdicts { grid-template-columns: minmax(0, 1fr); }
+  .flow, .cases, .verdicts, .looks { grid-template-columns: minmax(0, 1fr); }
+  .mini { max-width: 360px; }
   .flow { gap: 36px; }
   .flow li { padding: 0; }
   .flow li:not(:last-child) .host::after { display: none; }
@@ -806,7 +842,7 @@ footer .brand svg { width: 24px; height: 24px; }
   .controls { grid-template-columns: minmax(0, 1fr); }
 }
 @media (prefers-reduced-motion: reduce) {
-  body.is-offline .glow.on { animation: none; opacity: 0.85; }
+  body.is-offline .glow.on, .glow.always { animation: none; opacity: 0.85; }
   * { transition: none !important; }
 }
 </style>
@@ -840,6 +876,7 @@ footer .brand svg { width: 24px; height: 24px; }
   </a>
   <nav aria-label="Sections">
     <a href="#why">Why</a>
+    <a href="#glow">The glow</a>
     <a href="#how">How it works</a>
     <a href="#menu">Features</a>
     <a href="#scope">Limits</a>
@@ -852,7 +889,7 @@ footer .brand svg { width: 24px; height: 24px; }
     <div class="hero-copy">
       <p class="kicker"><span class="led" aria-hidden="true"></span><span id="kicker-text">Reply from 8.8.8.8 · 14 ms</span></p>
       <h1>Is it the server, or <span class="drop">your internet?</span></h1>
-      <p class="lede">A page won't open. A game freezes mid-match. IsConnected tells you right away whether that one server is the problem or your own connection is down.</p>
+      <p class="lede">A page won't open. A game freezes mid-match. If your own connection is the cause, IsConnected makes the edge of your screen glow, so you see it at once without hunting for an icon in the tray.</p>
       <div class="ctas">
         <a class="btn btn-primary" href="#install">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12m0 0-5-5m5 5 5-5M5 20h14"/></svg>
@@ -913,7 +950,7 @@ footer .brand svg { width: 24px; height: 24px; }
         </div>
       </div>
 
-      <p class="verdict" id="verdict" aria-live="polite">Everything answers. IsConnected stays green in the tray and out of your way.</p>
+      <p class="verdict" id="verdict" aria-live="polite">Everything answers. Nothing on your screen changes, so you can keep going.</p>
 
       <div class="controls">
         <div class="ctl">
@@ -948,23 +985,52 @@ footer .brand svg { width: 24px; height: 24px; }
       </div>
 
       <ul class="cases">
-        <li><h3>A page won't load</h3><p>Before you refresh it ten times or decide the site is down, look at the tray.</p></li>
+        <li><h3>A page won't load</h3><p>Before you refresh it ten times or decide the site is down, notice whether your screen is glowing.</p></li>
         <li><h3>A game lags or kicks you out</h3><p>Before you switch servers or blame the game, check whether your internet dropped. Set the interval to 1 second and even a short drop shows up mid-match.</p></li>
         <li><h3>A call freezes</h3><p>Before you ask the other person to reconnect, find out whose connection actually went.</p></li>
       </ul>
 
       <div class="verdicts">
         <div class="v-card v-down">
-          <p class="v-sign"><svg aria-hidden="true" viewBox="0 0 64 64"><use href="#icon-offline"/></svg>Screen glows, icon is red</p>
+          <p class="v-sign"><span class="v-dot" aria-hidden="true"></span>The screen glows</p>
           <h3>It's your connection</h3>
           <p>Neither Google nor Cloudflare answers, so the problem is on your side. Check the Wi-Fi or cable, restart the router or wait it out. Refreshing the page or picking another game server won't help.</p>
         </div>
         <div class="v-card v-up">
-          <p class="v-sign"><svg aria-hidden="true"><use href="#logo"/></svg>No glow, icon is green</p>
+          <p class="v-sign"><span class="v-dot" aria-hidden="true"></span>No glow</p>
           <h3>Your internet is fine</h3>
           <p>Your computer reaches the internet, so the site or game server you're using is the likely culprit. Check its status page or try again later.</p>
         </div>
       </div>
+    </div>
+  </section>
+
+  <section id="glow">
+    <div class="wrap">
+      <div class="sec-head">
+        <p class="eyebrow">No tray icon to hunt for</p>
+        <h2>You notice it without looking for it</h2>
+        <p>A tray icon is easy to miss. Windows tucks new ones behind the overflow arrow, and in the middle of a game or a long read nobody watches the taskbar. IsConnected puts the warning where your eyes already are: a soft pulsing glow on the screen itself. It ignores your clicks and goes away as soon as the connection is back.</p>
+      </div>
+
+      <ul class="looks">
+        <li>
+          <div class="mini" aria-hidden="true"><div class="glow always" data-area="FullScreen"></div></div>
+          <h3>Whole screen</h3>
+          <p>The strongest signal: a glow around every connected monitor.</p>
+        </li>
+        <li>
+          <div class="mini" aria-hidden="true"><div class="glow always" data-area="Bottom"></div></div>
+          <h3>One edge</h3>
+          <p>Left, right, top or bottom, for a quieter hint at the side of your view.</p>
+        </li>
+        <li>
+          <div class="mini" aria-hidden="true"><div class="glow always" data-area="TopRight"></div></div>
+          <h3>One corner</h3>
+          <p>The subtlest option, a glow from any of the four corners.</p>
+        </li>
+      </ul>
+      <p class="looks-note">Pick any color. Turn on <strong>Highlight issue</strong> in the tray menu, then use <strong>Test issue</strong> to see it for 5 seconds without disconnecting.</p>
     </div>
   </section>
 
@@ -988,12 +1054,9 @@ footer .brand svg { width: 24px; height: 24px; }
           <p>No reply? One more request goes to Cloudflare DNS in the same cycle. Either answer counts as connected.</p>
         </li>
         <li>
-          <span class="host states">
-            <span><svg aria-hidden="true"><use href="#logo"/></svg>Online</span>
-            <span><svg aria-hidden="true" viewBox="0 0 64 64"><use href="#icon-offline"/></svg>Offline</span>
-          </span>
-          <h3>Show the result</h3>
-          <p>The tray icon turns green or gets a red slash. With <em>Highlight issue</em> on, the glow starts and keeps pulsing until a ping comes back.</p>
+          <span class="host"><span class="v-dot lit" aria-hidden="true"></span>Glow</span>
+          <h3>Light up the screen</h3>
+          <p>Both silent means you're offline: the glow starts and keeps pulsing until a ping comes back. The tray icon also gets a red slash, and its menu shows the details.</p>
         </li>
       </ol>
 
@@ -1018,7 +1081,7 @@ footer .brand svg { width: 24px; height: 24px; }
       <ul class="menu-map">
         <li><div class="mi disabled">Online, 14 ms via 8.8.8.8 (last check 14:02:11)</div><div class="desc"><span><strong>Status line.</strong> Round-trip time, which host answered and when the last check ran.</span></div></li>
         <li class="sep"><div class="mi"><span class="check">✓</span>Autostart</div><div class="desc"><span><strong>Start with Windows.</strong> Writes to your own <code>HKCU\…\Run</code> key, so no administrator rights are needed.</span></div></li>
-        <li><div class="mi"><span class="check">✓</span>Highlight issue</div><div class="desc"><span><strong>Glow on outage.</strong> A pulsing colored glow around your screens while you're offline, on top of the page or game in front of you. It ignores clicks, so nothing gets in your way.</span></div></li>
+        <li><div class="mi"><span class="check">✓</span>Highlight issue</div><div class="desc"><span><strong>The main feature.</strong> Turns on the screen glow while you're offline, on top of the page or game in front of you. It ignores clicks, so nothing gets in your way.</span></div></li>
         <li><div class="mi">Show current speed</div><div class="desc"><span><strong>Live throughput.</strong> A small always-on-top readout of download and upload in MB/s. It reads Windows interface counters and sends no traffic of its own.</span></div></li>
         <li><div class="mi">Speed overlay corner <span class="sub">▸</span></div><div class="desc"><span>Top left, top right, bottom left or bottom right of the primary screen.</span></div></li>
         <li><div class="mi">Highlight area <span class="sub">▸</span></div><div class="desc"><span>Every connected screen, a single edge, or one corner: nine placements in all.</span></div></li>
@@ -1210,8 +1273,8 @@ footer .brand svg { width: 24px; height: 24px; }
     gameTitle.textContent = v ? 'Reconnecting…' : 'Ping 38 ms';
     gameSub.textContent = v ? 'Lost connection to server' : 'Ranked match · 14 : 12';
     verdict.textContent = v
-      ? 'The browser blames the site and the game blames its server. The glow shows the real cause: your own connection is down.'
-      : 'Everything answers. IsConnected stays green in the tray and out of your way.';
+      ? 'The browser blames the site and the game blames its server. The glowing screen shows the real cause: your own connection is down.'
+      : 'Everything answers. Nothing on your screen changes, so you can keep going.';
     updateTip();
     tick();
   }
