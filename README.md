@@ -10,6 +10,18 @@ When connectivity appears to be offline, IsConnected can show a pulsing colored 
 
 The app is intentionally lightweight: it reports whether either target responds to ICMP ping. It does not validate DNS resolution, HTTP access, captive portals, VPN routing, or service-specific availability. Networks that block ICMP can therefore be reported as offline even when browser traffic works.
 
+## Install
+
+Requires Windows 10 or 11, x64.
+
+**[Download IsConnected-Setup.exe](https://github.com/beprogressive/isConnected/releases/latest/download/IsConnected-Setup.exe)** and run it. It needs no administrator rights and no separate .NET install. The app goes to `%LOCALAPPDATA%\Programs\IsConnected` and gets a Start menu shortcut.
+
+The installer is not code-signed yet, so Windows SmartScreen may warn about it. To continue, choose **More info**, then **Run anyway**.
+
+To update, run the installer of the new version: it closes the running app and replaces it, keeping your settings and autostart. To remove the app, use **Settings > Apps > Installed apps**. Your settings file stays in `%APPDATA%\IsConnected`; delete it by hand if you don't need it.
+
+Prefer to build it yourself? See [Build from source](#build-from-source).
+
 ## Behavior
 
 - Green tray icon: ping succeeded.
@@ -52,15 +64,19 @@ HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run
 
 The setting is per Windows user and does not require administrator permissions under normal user profiles.
 
-## Build
+## Build from source
+
+An alternative to the [installer](#install). Requires the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0).
 
 ```powershell
+git clone https://github.com/beprogressive/isConnected
+cd isConnected
 dotnet build -c Release
 ```
 
-## Publish lightweight exe
+### Publish lightweight exe
 
-This creates a small framework-dependent executable. It requires .NET 8 Desktop Runtime on the target machine.
+This creates a small framework-dependent executable. It requires .NET 10 Desktop Runtime on the target machine.
 
 ```powershell
 dotnet publish -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o .\publish
@@ -72,10 +88,31 @@ Run:
 .\publish\IsConnected.exe
 ```
 
-## Publish self-contained exe
+### Publish self-contained exe
 
-Use this only when the target machine may not have .NET 8 Desktop Runtime installed. The output is much larger.
+Use this only when the target machine may not have .NET 10 Desktop Runtime installed. The output is much larger.
 
 ```powershell
 dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o .\publish-self-contained
+```
+
+### Close a running copy
+
+`IsConnected.exe --exit` asks a running copy to close and waits for it, up to 10 seconds. The installer uses this before it updates or removes the app.
+
+## Release
+
+The installer is built with [Inno Setup 6](https://jrsoftware.org/isinfo.php). To build it locally:
+
+```powershell
+.\installer\build-installer.ps1
+```
+
+The result is `artifacts\installer\IsConnected-Setup.exe`.
+
+To publish a version, set `<Version>` in `IsConnected.csproj`, merge to `main`, then push a matching tag. The `Release` workflow builds the installer and creates the GitHub Release. It fails if the tag and `<Version>` differ.
+
+```powershell
+git tag v1.0.0
+git push origin v1.0.0
 ```
